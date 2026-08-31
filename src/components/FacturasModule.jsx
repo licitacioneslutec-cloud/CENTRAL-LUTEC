@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { C, SAMPLE_NOVEDADES, SAMPLE_NO_RADICADAS } from "../constants";
+import { C } from "../constants";
 import { useFilters } from "../hooks/useFilters";
+import { useFacturas } from "../hooks/useFacturas";
 import SearchBar from "./SearchBar";
 import FilterChips from "./FilterChips";
 import StatsBar from "./StatsBar";
@@ -31,17 +32,19 @@ const tabCount = {
 export default function FacturasModule({ role, onBack }) {
   const isCont = role === "contabilidad";
   const [tab, setTab] = useState("novedades");
-  const [novedades, setNovedades] = useState(SAMPLE_NOVEDADES);
-  const [noRad, setNoRad] = useState(SAMPLE_NO_RADICADAS);
+  const { data: novedadesData, loading: novLoading, updateField: updateNov, addFactura: addNov, bulkAdd: bulkAddNov } = useFacturas("novedades");
+  const { data: noRadData, loading: noRadLoading, updateField: updateNoRad, addFactura: addNoRad, bulkAdd: bulkAddNoRad } = useFacturas("noRadicadas");
 
-  const data = tab === "novedades" ? novedades : noRad;
-  const setData = tab === "novedades" ? setNovedades : setNoRad;
+  const data = tab === "novedades" ? novedadesData : noRadData;
+  const loading = tab === "novedades" ? novLoading : noRadLoading;
+  const handleUpdate = tab === "novedades" ? updateNov : updateNoRad;
+  // Kept available for the "Agregar" / "Cargar Excel" buttons wired in later tasks.
+  const addFactura = tab === "novedades" ? addNov : addNoRad;
+  const bulkAdd = tab === "novedades" ? bulkAddNov : bulkAddNoRad;
+  void addFactura;
+  void bulkAdd;
 
   const { filtered, search, setSearch, filtroEstado, setFiltroEstado, stats } = useFilters(data);
-
-  const handleUpdate = (id, key, value) => {
-    setData((prev) => prev.map((r) => (r.id === id ? { ...r, [key]: value } : r)));
-  };
 
   return (
     <div style={{ minHeight: "100vh", background: C.off, fontFamily: "system-ui,-apple-system,sans-serif" }}>
@@ -86,10 +89,10 @@ export default function FacturasModule({ role, onBack }) {
         </div>
         <div style={{ display: "flex" }}>
           <button style={tabBtn(tab === "novedades")} onClick={() => setTab("novedades")}>
-            Con novedades <span style={tabCount}>{novedades.length}</span>
+            Con novedades <span style={tabCount}>{novedadesData.length}</span>
           </button>
           <button style={tabBtn(tab === "noRadicadas")} onClick={() => setTab("noRadicadas")}>
-            No radicadas <span style={tabCount}>{noRad.length}</span>
+            No radicadas <span style={tabCount}>{noRadData.length}</span>
           </button>
         </div>
       </header>
@@ -146,7 +149,11 @@ export default function FacturasModule({ role, onBack }) {
           <StatsBar stats={stats} />
         </div>
 
-        <FacturasTable data={filtered} role={role} onUpdate={handleUpdate} totalCount={data.length} />
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>Cargando facturas…</div>
+        ) : (
+          <FacturasTable data={filtered} role={role} onUpdate={handleUpdate} totalCount={data.length} />
+        )}
       </div>
     </div>
   );
