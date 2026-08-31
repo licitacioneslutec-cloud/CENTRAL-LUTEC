@@ -41,7 +41,7 @@ export default function EditableCell({
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             autoFocus
-            style={{ fontSize: 10, padding: "2px 4px", border: `1px solid ${C.g200}`, borderRadius: 3 }}
+            style={{ fontSize: 11, padding: "2px 4px", border: `1px solid ${C.g200}`, borderRadius: 3 }}
           >
             <option value="">Sin estado</option>
             {options.map((o) => (
@@ -61,13 +61,13 @@ export default function EditableCell({
         )}
         <button
           onClick={save}
-          style={{ background: C.accent, color: C.white, border: "none", fontSize: 9, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
+          style={{ background: C.accent, color: C.white, border: "none", fontSize: 11, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
         >
           ✓
         </button>
         <button
           onClick={cancel}
-          style={{ background: C.g100, color: C.g700, border: "none", fontSize: 9, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
+          style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
         >
           ✕
         </button>

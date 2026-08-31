@@ -14,7 +14,7 @@ const DEFAULTS = {
 
 const label = {
   display: "block",
-  fontSize: 9,
+  fontSize: 11,
   fontWeight: 600,
   letterSpacing: 0.5,
   color: C.g500,

@@ -24,7 +24,7 @@ const tabBtn = (active) => ({
 
 const tabCount = {
   background: "rgba(255,255,255,.15)",
-  fontSize: 10,
+  fontSize: 11,
   padding: "1px 6px",
   borderRadius: 8,
   marginLeft: 6,
@@ -70,7 +70,7 @@ export default function FacturasModule({ role, onBack }) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.off, fontFamily: "system-ui,-apple-system,sans-serif" }}>
-      <header style={{ background: C.navy, padding: "0 24px" }}>
+      <header className="app-header" style={{ background: C.navy, padding: "0 24px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 50 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
@@ -92,12 +92,12 @@ export default function FacturasModule({ role, onBack }) {
             >
               <span style={{ color: C.white, fontSize: 7, fontWeight: 700, letterSpacing: 1.5 }}>LUTEC</span>
             </div>
-            <span style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>PORTAL CORPORATIVO</span>
+            <span className="brand-title" style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>PORTAL CORPORATIVO</span>
             <div
               style={{
                 background: C.accent,
                 color: C.navy,
-                fontSize: 9,
+                fontSize: 11,
                 fontWeight: 700,
                 letterSpacing: 1,
                 padding: "2px 8px",
@@ -122,14 +122,14 @@ export default function FacturasModule({ role, onBack }) {
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "20px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
           <div>
-            <div style={{ color: C.accent, fontSize: 10, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase" }}>
+            <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase" }}>
               Aclaración de facturas
             </div>
             <h1 style={{ fontSize: 18, fontWeight: 700, color: C.navy, margin: "2px 0 0" }}>
               {tab === "novedades" ? "Facturas con Novedades" : "Facturas No Radicadas"}
             </h1>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <SearchBar search={search} setSearch={setSearch} />
             {isCont && (
               <>
@@ -162,7 +162,10 @@ export default function FacturasModule({ role, onBack }) {
         {isCont && showAdd && <AddRowForm onAdd={handleAddRow} onCancel={() => setShowAdd(false)} />}
 
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>Cargando facturas…</div>
+          <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>
+            <div className="spinner" />
+            Cargando facturas…
+          </div>
         ) : (
           <FacturasTable data={filtered} role={role} onUpdate={handleUpdate} totalCount={data.length} />
         )}

@@ -16,10 +16,10 @@ export default function FilterChips({ filtroEstado, setFiltroEstado, stats }) {
   });
 
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="filter-chips" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
       <span
         style={{
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: 600,
           letterSpacing: 1,
           color: C.g500,

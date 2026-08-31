@@ -20,7 +20,7 @@ const mainCols = [
 
 const th = {
   padding: "9px 8px",
-  fontSize: 9,
+  fontSize: 11,
   fontWeight: 700,
   letterSpacing: 0.8,
   color: C.g500,
@@ -149,7 +149,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             fontFamily: k === "nitEmisor" ? "monospace" : "inherit",
-                            fontSize: k === "nitEmisor" ? 10 : 11,
+                            fontSize: 11,
                           }}
                         >
                           {val}
@@ -161,13 +161,13 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                   {isExpanded && (
                     <tr style={{ background: C.off }}>
                       <td colSpan={mainCols.length + 1} style={{ padding: "12px 20px 16px 44px" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: C.accent, textTransform: "uppercase", marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.accent, textTransform: "uppercase", marginBottom: 8 }}>
                           Detalle completo
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                           {ALL_FIELDS.map((f) => (
                             <div key={f.key} style={{ fontSize: 11 }}>
-                              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
                                 {f.label}:{" "}
                               </span>
                               <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(row[f.key]) : row[f.key] || "—"}</span>
@@ -175,10 +175,10 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                           ))}
                         </div>
                         <div style={{ marginTop: 8, fontSize: 11 }}>
-                          <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
                             CUFE Completo:{" "}
                           </span>
-                          <span style={{ color: C.g700, fontFamily: "monospace", fontSize: 10, wordBreak: "break-all" }}>{row.cufe}</span>
+                          <span style={{ color: C.g700, fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{row.cufe}</span>
                         </div>
                       </td>
                     </tr>
@@ -188,8 +188,12 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
             })}
             {data.length === 0 && (
               <tr>
-                <td colSpan={mainCols.length + 1} style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>
-                  No se encontraron facturas con los filtros aplicados
+                <td colSpan={mainCols.length + 1} style={{ padding: 48, textAlign: "center" }}>
+                  <div className="empty-state">
+                    <span className="empty-state-icon">🗂️</span>
+                    <span style={{ color: C.g700, fontSize: 13, fontWeight: 600 }}>No se encontraron facturas</span>
+                    <span style={{ color: C.g500, fontSize: 12 }}>Prueba con otros filtros o ajusta la búsqueda</span>
+                  </div>
                 </td>
               </tr>
             )}

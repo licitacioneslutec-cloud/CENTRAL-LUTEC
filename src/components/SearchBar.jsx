@@ -5,6 +5,7 @@ export default function SearchBar({ search, setSearch }) {
   return (
     <input
       type="text"
+      className="search-input"
       placeholder="Buscar folio, emisor, NIT, CUFE..."
       value={search}
       onChange={(e) => setSearch(e.target.value)}
