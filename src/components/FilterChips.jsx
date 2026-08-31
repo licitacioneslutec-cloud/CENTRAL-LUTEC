@@ -44,6 +44,9 @@ export default function FilterChips({ filtroEstado, setFiltroEstado, stats }) {
       <button style={filterBtn("SIN ESTADO")} onClick={() => setFiltroEstado("SIN ESTADO")}>
         Sin estado ({stats.sinEstado})
       </button>
+      <button style={filterBtn("SIN RESPUESTA")} onClick={() => setFiltroEstado("SIN RESPUESTA")}>
+        Sin respuesta ({stats.sinRta})
+      </button>
     </div>
   );
 }

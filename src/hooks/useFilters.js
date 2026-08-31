@@ -7,8 +7,12 @@ export function useFilters(data) {
 
   const filtered = useMemo(() => {
     let d = data;
-    if (filtroEstado !== "TODOS") {
-      d = filtroEstado === "SIN ESTADO" ? d.filter((r) => !r.estado) : d.filter((r) => r.estado === filtroEstado);
+    if (filtroEstado === "SIN RESPUESTA") {
+      d = d.filter((r) => !r.rtaCompras);
+    } else if (filtroEstado === "SIN ESTADO") {
+      d = d.filter((r) => !r.estado);
+    } else if (filtroEstado !== "TODOS") {
+      d = d.filter((r) => r.estado === filtroEstado);
     }
     if (search) {
       const s = search.toLowerCase();

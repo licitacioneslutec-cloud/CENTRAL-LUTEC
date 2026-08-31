@@ -156,7 +156,7 @@ export default function FacturasModule({ role, onBack }) {
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
           <FilterChips filtroEstado={filtroEstado} setFiltroEstado={setFiltroEstado} stats={stats} />
-          <StatsBar stats={stats} />
+          <StatsBar stats={stats} role={role} />
         </div>
 
         {isCont && showAdd && <AddRowForm onAdd={handleAddRow} onCancel={() => setShowAdd(false)} />}
