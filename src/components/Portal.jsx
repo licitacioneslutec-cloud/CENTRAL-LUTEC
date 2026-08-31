@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { DEPARTMENTS, C } from "../constants";
+import PasswordGate from "./PasswordGate";
 
 // ─── Portal Landing ───
 export default function Portal({ onNavigate }) {
+  const [pendingExternal, setPendingExternal] = useState(null);
+
   return (
     <div style={{ minHeight:"100vh", background:C.off, fontFamily:"system-ui,-apple-system,sans-serif" }}>
       <header className="app-header" style={{ background:C.navy, padding:"16px 32px", display:"flex", alignItems:"center", gap:12 }}>
@@ -40,7 +44,13 @@ export default function Portal({ onNavigate }) {
                       key={mod.id + dept.id}
                       onClick={() => {
                         if (isSoon) return;
-                        if (isExt) { window.open(mod.url, '_blank'); }
+                        if (isExt) {
+                          if (mod.password && !sessionStorage.getItem('auth_' + mod.id)) {
+                            setPendingExternal(mod);
+                            return;
+                          }
+                          window.open(mod.url, '_blank');
+                        }
                         else onNavigate("facturas", mod.role, mod.password);
                       }}
                       disabled={isSoon}
@@ -78,6 +88,20 @@ export default function Portal({ onNavigate }) {
           </p>
         </div>
       </div>
+
+      {pendingExternal && (
+        <PasswordGate
+          moduleId={pendingExternal.id}
+          role={pendingExternal.id}
+          passwordHash={pendingExternal.password}
+          onSuccess={() => {
+            sessionStorage.setItem('auth_' + pendingExternal.id, '1');
+            window.open(pendingExternal.url, '_blank');
+            setPendingExternal(null);
+          }}
+          onCancel={() => setPendingExternal(null)}
+        />
+      )}
     </div>
   );
 }
