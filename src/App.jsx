@@ -1,7 +1,7 @@
 import { useState } from "react";
+import Portal from "./components/Portal";
 
-// TODO: replace placeholders with real components once they exist:
-//   import Portal from "./components/Portal";
+// TODO: replace placeholder with real component once it exists:
 //   import FacturasModule from "./components/FacturasModule";
 export default function App() {
   const [view, setView] = useState("portal");
@@ -18,16 +18,11 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
-      <h1>Portal Corporativo Lutec (placeholder)</h1>
-      <button
-        onClick={() => {
-          setRole("admin");
-          setView("facturas");
-        }}
-      >
-        Ir a Facturas
-      </button>
-    </div>
+    <Portal
+      onNavigate={(target, navRole) => {
+        setRole(navRole);
+        setView(target);
+      }}
+    />
   );
 }
