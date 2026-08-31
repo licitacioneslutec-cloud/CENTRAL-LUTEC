@@ -7,6 +7,7 @@ import FilterChips from "./FilterChips";
 import StatsBar from "./StatsBar";
 import FacturasTable from "./FacturasTable";
 import UploadExcel from "./UploadExcel";
+import AddRowForm from "./AddRowForm";
 
 const tabBtn = (active) => ({
   padding: "10px 18px",
@@ -34,15 +35,14 @@ export default function FacturasModule({ role, onBack }) {
   const isCont = role === "contabilidad";
   const [tab, setTab] = useState("novedades");
   const [toast, setToast] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
   const { data: novedadesData, loading: novLoading, updateField: updateNov, addFactura: addNov, bulkAdd: bulkAddNov } = useFacturas("novedades");
   const { data: noRadData, loading: noRadLoading, updateField: updateNoRad, addFactura: addNoRad, bulkAdd: bulkAddNoRad } = useFacturas("noRadicadas");
 
   const data = tab === "novedades" ? novedadesData : noRadData;
   const loading = tab === "novedades" ? novLoading : noRadLoading;
   const handleUpdate = tab === "novedades" ? updateNov : updateNoRad;
-  // Kept available for the "Agregar" button wired in a later task.
   const addFactura = tab === "novedades" ? addNov : addNoRad;
-  void addFactura;
 
   const showToast = (message) => {
     setToast(message);
@@ -58,6 +58,12 @@ export default function FacturasModule({ role, onBack }) {
     const totalAdded = addedNov + addedNoRad;
     const duplicated = totalRows - totalAdded;
     showToast(`${totalAdded} facturas agregadas. ${duplicated} duplicadas omitidas.`);
+  };
+
+  const handleAddRow = (factura) => {
+    const added = addFactura(factura);
+    setShowAdd(false);
+    showToast(added ? "Factura agregada correctamente." : "No se pudo agregar: CUFE vacío o ya existente.");
   };
 
   const { filtered, search, setSearch, filtroEstado, setFiltroEstado, stats } = useFilters(data);
@@ -128,6 +134,7 @@ export default function FacturasModule({ role, onBack }) {
             {isCont && (
               <>
                 <button
+                  onClick={() => setShowAdd((v) => !v)}
                   style={{
                     background: C.white,
                     border: `1px solid ${C.g200}`,
@@ -151,6 +158,8 @@ export default function FacturasModule({ role, onBack }) {
           <FilterChips filtroEstado={filtroEstado} setFiltroEstado={setFiltroEstado} stats={stats} />
           <StatsBar stats={stats} />
         </div>
+
+        {isCont && showAdd && <AddRowForm onAdd={handleAddRow} onCancel={() => setShowAdd(false)} />}
 
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>Cargando facturas…</div>
