@@ -1,0 +1,59 @@
+// ─── Firebase (Realtime Database) config and CRUD helpers ───
+// One Firebase project shared by all internal modules.
+// Structure: facturas/{novedades|noRadicadas}/{cufeHash}, config/estados
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, onValue, set, update, get } from "firebase/database";
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+
+// True once real credentials are set; lets the app fall back to sample data until then.
+export function isFirebaseConfigured() {
+  return Boolean(firebaseConfig.apiKey);
+}
+
+let dbInstance = null;
+
+// Initializes the Firebase app and returns the Realtime Database instance. Call once.
+export function initFirebase() {
+  if (!dbInstance) {
+    const app = initializeApp(firebaseConfig);
+    dbInstance = getDatabase(app);
+  }
+  return dbInstance;
+}
+
+// Firebase RTDB keys can't contain . # $ [ ] — replace them so a CUFE is a safe key.
+export function toSafeKey(cufe) {
+  return String(cufe).replace(/[.#$[\]]/g, "_");
+}
+
+// Subscribes to facturas/{tab} in real time. Calls callback(data) on every change
+// (data is Firebase's object of {cufeHash: factura} or null). Returns an unsubscribe fn.
+export function subscribeFacturas(db, tab, callback) {
+  const facturasRef = ref(db, `facturas/${tab}`);
+  return onValue(facturasRef, (snapshot) => callback(snapshot.val()));
+}
+
+// Writes (overwrites) one factura at facturas/{tab}/{cufeHash}.
+export function writeFactura(db, tab, cufeHash, data) {
+  return set(ref(db, `facturas/${tab}/${toSafeKey(cufeHash)}`), data);
+}
+
+// Updates specific fields of one factura without overwriting the rest.
+export function updateFactura(db, tab, cufeHash, fields) {
+  return update(ref(db, `facturas/${tab}/${toSafeKey(cufeHash)}`), fields);
+}
+
+// Reads config/estados once. Returns a promise resolving to an array of estado strings.
+export async function loadEstados(db) {
+  const snapshot = await get(ref(db, "config/estados"));
+  return snapshot.exists() ? snapshot.val() : [];
+}
