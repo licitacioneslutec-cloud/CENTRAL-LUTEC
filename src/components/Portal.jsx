@@ -41,7 +41,7 @@ export default function Portal({ onNavigate }) {
                       onClick={() => {
                         if (isSoon) return;
                         if (isExt) { window.open(mod.url, '_blank'); }
-                        else onNavigate("facturas", mod.role);
+                        else onNavigate("facturas", mod.role, mod.password);
                       }}
                       disabled={isSoon}
                       style={{

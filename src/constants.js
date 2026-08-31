@@ -3,29 +3,29 @@ export const DEPARTMENTS = [
   {
     id: "presupuestos", name: "Presupuestos", icon: "📐", desc: "Cotizaciones y análisis de bolsas de proyectos",
     modules: [
-      { id: "cotizaciones", name: "Cotizaciones Eléctricas", desc: "Gestión de cotizaciones por proyecto", type: "external", url: "#", status: "activo" },
-      { id: "bolsas", name: "Bolsas", desc: "Análisis y control de bolsas de proyectos", type: "external", url: "#", status: "activo" },
+      { id: "cotizaciones", name: "Cotizaciones Eléctricas", desc: "Gestión de cotizaciones por proyecto", type: "external", url: "https://cotizacioneslutec.netlify.app/", status: "activo" },
+      { id: "bolsas", name: "Bolsas", desc: "Análisis y control de bolsas de proyectos", type: "external", url: "https://effervescent-haupia-f573df.netlify.app/", status: "activo" },
     ],
   },
   {
     id: "ingenieria", name: "Ingeniería", icon: "⚡", desc: "Gestión de contratos y recarga de proyectos",
     modules: [
-      { id: "recarga", name: "Recarga Contratos", desc: "Control y seguimiento de recarga de contratos", type: "external", url: "#", status: "activo" },
+      { id: "recarga", name: "Recarga Contratos", desc: "Control y seguimiento de recarga de contratos", type: "external", url: "https://contratos-ingenieria.netlify.app/", status: "activo" },
     ],
   },
   {
     id: "compras", name: "Compras", icon: "🛒", desc: "Actualización Monday, estados mensuales y aclaraciones de facturación",
     modules: [
-      { id: "monday", name: "Actualización Monday", desc: "Sincronización y actualización de tableros Monday", type: "external", url: "#", status: "activo" },
-      { id: "estado-mensual", name: "Estado Compras Mensual", desc: "Reporte mensual del estado de compras", type: "external", url: "#", status: "activo" },
-      { id: "facturas", name: "Aclaración Facturas", desc: "Responder solicitudes de aclaración de contabilidad", type: "internal", status: "activo", role: "compras" },
+      { id: "monday", name: "Actualización Monday", desc: "Sincronización y actualización de tableros Monday", type: "external", url: "https://compras-comisiones.netlify.app/importar.html", status: "activo" },
+      { id: "estado-mensual", name: "Estado Compras Mensual", desc: "Reporte mensual del estado de compras", type: "external", url: "https://compras-comisiones.netlify.app/", status: "activo" },
+      { id: "facturas", name: "Aclaración Facturas", desc: "Responder solicitudes de aclaración de contabilidad", type: "internal", status: "activo", role: "compras", password: "58f6204a2165a97bb2c7446019edaa46c4151b019fb8600f792aab60f2b51ded" },
     ],
   },
   {
     id: "contabilidad", name: "Contabilidad", icon: "📊", desc: "Radicación de facturas y lectura de órdenes de compra DIAN",
     modules: [
-      { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad" },
-      { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente" },
+      { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad", password: "cf1734e6ec3d004aa57b8d823f19de0cd1cf766cf26fd7abffe19156f4ae0896" },
+      { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente", password: "9e4a5a8d628e61505211aad64d40834d493a53809608c297c6cda6242c251a0c" },
     ],
   },
 ];
