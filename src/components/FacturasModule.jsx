@@ -6,6 +6,7 @@ import SearchBar from "./SearchBar";
 import FilterChips from "./FilterChips";
 import StatsBar from "./StatsBar";
 import FacturasTable from "./FacturasTable";
+import UploadExcel from "./UploadExcel";
 
 const tabBtn = (active) => ({
   padding: "10px 18px",
@@ -32,17 +33,32 @@ const tabCount = {
 export default function FacturasModule({ role, onBack }) {
   const isCont = role === "contabilidad";
   const [tab, setTab] = useState("novedades");
+  const [toast, setToast] = useState(null);
   const { data: novedadesData, loading: novLoading, updateField: updateNov, addFactura: addNov, bulkAdd: bulkAddNov } = useFacturas("novedades");
   const { data: noRadData, loading: noRadLoading, updateField: updateNoRad, addFactura: addNoRad, bulkAdd: bulkAddNoRad } = useFacturas("noRadicadas");
 
   const data = tab === "novedades" ? novedadesData : noRadData;
   const loading = tab === "novedades" ? novLoading : noRadLoading;
   const handleUpdate = tab === "novedades" ? updateNov : updateNoRad;
-  // Kept available for the "Agregar" / "Cargar Excel" buttons wired in later tasks.
+  // Kept available for the "Agregar" button wired in a later task.
   const addFactura = tab === "novedades" ? addNov : addNoRad;
-  const bulkAdd = tab === "novedades" ? bulkAddNov : bulkAddNoRad;
   void addFactura;
-  void bulkAdd;
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // Handles the parsed Excel result: bulk-inserts each sheet's rows into its
+  // matching tab, skipping duplicates by CUFE (handled inside bulkAdd).
+  const handleExcelUpload = ({ novedades, noRadicadas }) => {
+    const addedNov = bulkAddNov(novedades);
+    const addedNoRad = bulkAddNoRad(noRadicadas);
+    const totalRows = novedades.length + noRadicadas.length;
+    const totalAdded = addedNov + addedNoRad;
+    const duplicated = totalRows - totalAdded;
+    showToast(`${totalAdded} facturas agregadas. ${duplicated} duplicadas omitidas.`);
+  };
 
   const { filtered, search, setSearch, filtroEstado, setFiltroEstado, stats } = useFilters(data);
 
@@ -125,20 +141,7 @@ export default function FacturasModule({ role, onBack }) {
                 >
                   + Agregar
                 </button>
-                <button
-                  style={{
-                    background: C.accent,
-                    border: "none",
-                    color: C.white,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: "7px 14px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                  }}
-                >
-                  Cargar Excel
-                </button>
+                <UploadExcel onUpload={handleExcelUpload} />
               </>
             )}
           </div>
@@ -155,6 +158,27 @@ export default function FacturasModule({ role, onBack }) {
           <FacturasTable data={filtered} role={role} onUpdate={handleUpdate} totalCount={data.length} />
         )}
       </div>
+
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: C.navy,
+            color: C.white,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "10px 20px",
+            borderRadius: 6,
+            boxShadow: "0 4px 12px rgba(0,0,0,.2)",
+            zIndex: 1000,
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
