@@ -40,7 +40,7 @@ export default function Portal({ onNavigate }) {
                       key={mod.id + dept.id}
                       onClick={() => {
                         if (isSoon) return;
-                        if (isExt) { /* window.open(mod.url, '_blank') */ alert(`Abre enlace externo: ${mod.name}\nURL: ${mod.url}`); }
+                        if (isExt) { window.open(mod.url, '_blank'); }
                         else onNavigate("facturas", mod.role);
                       }}
                       disabled={isSoon}
