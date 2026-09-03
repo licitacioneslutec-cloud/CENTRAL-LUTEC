@@ -3,7 +3,7 @@ import { C } from "../constants";
 import { parseExcel } from "../utils";
 
 // ─── "Cargar Excel" button + hidden file input. Parses the selected workbook
-// and hands the split { novedades, noRadicadas } result to `onUpload`. ───
+// and hands the flat array of rows to `onUpload`. ───
 export default function UploadExcel({ onUpload }) {
   const inputRef = useRef(null);
 

@@ -47,6 +47,12 @@ export default function FilterChips({ filtroEstado, setFiltroEstado, stats }) {
       <button style={filterBtn("SIN RESPUESTA")} onClick={() => setFiltroEstado("SIN RESPUESTA")}>
         Sin respuesta ({stats.sinRta})
       </button>
+      <button style={filterBtn("NO RADICADA")} onClick={() => setFiltroEstado("NO RADICADA")}>
+        No Radicada ({stats.noRadicada})
+      </button>
+      <button style={filterBtn("PENDIENTE REVISIÓN")} onClick={() => setFiltroEstado("PENDIENTE REVISIÓN")}>
+        Pend. Revisión ({stats.pendienteRevision})
+      </button>
     </div>
   );
 }

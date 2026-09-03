@@ -1,6 +1,6 @@
 import { useState, Fragment } from "react";
 import { ALL_FIELDS, C, ESTADOS } from "../constants";
-import { fmt } from "../utils";
+import { fmt, parseNum } from "../utils";
 import Badge from "./Badge";
 import EditableCell from "./EditableCell";
 
@@ -13,6 +13,8 @@ const mainCols = [
   "fechaEmision",
   "iva",
   "total",
+  "nERP",
+  "valorContabilizado",
   "estado",
   "observacion",
   "rtaCompras",
@@ -29,11 +31,26 @@ const th = {
   whiteSpace: "nowrap",
 };
 
+// canEdit for a column, given ALL_FIELDS metadata and the current role.
+function canEditField(f, isCont, isCompras) {
+  if (!f) return false;
+  if (f.editable === "contabilidad") return isCont;
+  if (f.editable === "compras") return isCompras;
+  return false;
+}
+
 // ─── Facturas data table with expandable detail row ───
-export default function FacturasTable({ data, role, onUpdate, totalCount }) {
+export default function FacturasTable({ data, allData, role, onUpdate, onDelete, totalCount, onWarn }) {
   const [expandedRow, setExpandedRow] = useState(null);
   const isCont = role === "contabilidad";
   const isCompras = role === "compras";
+  const rows = allData || data;
+
+  const needsReview = (row) => Boolean(row.rtaCompras) && row.rtaRevisada === false;
+
+  const handleDelete = (row) => {
+    if (window.confirm(`¿Eliminar la factura folio ${row.folio || row.id}?`)) onDelete?.(row.id);
+  };
 
   return (
     <div style={{ background: C.white, border: `1px solid ${C.g200}`, borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,.04)" }}>
@@ -50,17 +67,27 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                   </th>
                 );
               })}
+              {isCont && <th style={{ ...th, width: 60 }}></th>}
             </tr>
           </thead>
           <tbody>
             {data.map((row) => {
               const isExpanded = expandedRow === row.id;
+              const flagged = needsReview(row);
               return (
                 <Fragment key={row.id}>
                   <tr
-                    style={{ borderBottom: `1px solid ${C.g100}` }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = C.off)}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    style={{
+                      borderBottom: `1px solid ${C.g100}`,
+                      borderLeft: flagged ? `3px solid ${C.green}` : "3px solid transparent",
+                      background: flagged ? C.greenL : "transparent",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!flagged) e.currentTarget.style.background = C.off;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = flagged ? C.greenL : "transparent";
+                    }}
                   >
                     <td style={{ padding: "8px", textAlign: "center" }}>
                       <button
@@ -72,6 +99,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                     </td>
                     {mainCols.map((k) => {
                       const f = ALL_FIELDS.find((x) => x.key === k);
+                      const canEdit = canEditField(f, isCont, isCompras);
 
                       if (k === "estado") {
                         return (
@@ -80,7 +108,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                               value={row.estado}
                               type="select"
                               options={ESTADOS}
-                              canEdit={isCont}
+                              canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "estado", v)}
                               renderValue={(v) => <Badge estado={v} />}
                             />
@@ -94,7 +122,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                             <EditableCell
                               value={row.observacion}
                               type="text"
-                              canEdit={isCont}
+                              canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "observacion", v)}
                               placeholder="Click para agregar"
                             />
@@ -108,7 +136,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                             <EditableCell
                               value={row.rtaCompras}
                               type="text"
-                              canEdit={isCompras}
+                              canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaCompras", v)}
                               placeholder="Click para responder"
                             />
@@ -116,34 +144,81 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                         );
                       }
 
-                      if (f?.numeric) {
+                      if (k === "nERP") {
+                        const isDup = row.nERP && rows.some((r) => r.id !== row.id && r.nERP === row.nERP);
                         return (
-                          <td
-                            key={k}
-                            style={{
-                              padding: "8px",
-                              textAlign: "right",
-                              fontFamily: "monospace",
-                              fontSize: 11,
-                              color: k === "total" ? C.navy : C.g700,
-                              fontWeight: k === "total" ? 600 : 400,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {fmt(row[k])}
+                          <td key={k} style={{ padding: "8px", background: isDup ? C.redL : undefined }} title={isDup ? "N° ERP duplicado" : undefined}>
+                            <EditableCell
+                              value={row.nERP}
+                              type="text"
+                              canEdit={canEdit}
+                              onSave={(v) => {
+                                onUpdate(row.id, "nERP", v);
+                                if (v && rows.some((r) => r.id !== row.id && r.nERP === v)) {
+                                  onWarn?.(`N° ERP "${v}" ya existe en otra factura.`);
+                                }
+                              }}
+                              placeholder="Click para agregar"
+                            />
                           </td>
                         );
                       }
 
-                      const val = row[k] || "—";
+                      if (k === "valorContabilizado") {
+                        const val = row.valorContabilizado;
+                        const mismatch = Boolean(val) && val !== row.total;
+                        const diff = mismatch ? val - (row.total || 0) : 0;
+                        return (
+                          <td
+                            key={k}
+                            style={{ padding: "8px", textAlign: "right", background: mismatch ? C.orangeL : undefined }}
+                            title={mismatch ? `Difiere del total en ${fmt(diff)}` : undefined}
+                          >
+                            <EditableCell
+                              value={val}
+                              type="text"
+                              canEdit={canEdit}
+                              onSave={(v) => onUpdate(row.id, "valorContabilizado", parseNum(v))}
+                              renderValue={(v) => (
+                                <span style={{ fontFamily: "monospace", fontSize: 11, color: mismatch ? C.orange : C.g700 }}>{fmt(v)}</span>
+                              )}
+                              placeholder="Click para agregar"
+                            />
+                          </td>
+                        );
+                      }
+
+                      if (f?.numeric) {
+                        return (
+                          <td key={k} style={{ padding: "8px", textAlign: "right" }}>
+                            <EditableCell
+                              value={row[k]}
+                              type="text"
+                              canEdit={canEdit}
+                              onSave={(v) => onUpdate(row.id, k, parseNum(v))}
+                              renderValue={(v) => (
+                                <span
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontSize: 11,
+                                    color: k === "total" ? C.navy : C.g700,
+                                    fontWeight: k === "total" ? 600 : 400,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {fmt(v)}
+                                </span>
+                              )}
+                            />
+                          </td>
+                        );
+                      }
+
                       return (
                         <td
                           key={k}
-                          title={val}
                           style={{
                             padding: "8px",
-                            color: k === "folio" ? C.navy : C.g700,
-                            fontWeight: k === "folio" ? 600 : 400,
                             whiteSpace: "nowrap",
                             maxWidth: f?.w || 140,
                             overflow: "hidden",
@@ -152,15 +227,48 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
                             fontSize: 11,
                           }}
                         >
-                          {val}
+                          <EditableCell
+                            value={row[k]}
+                            type="text"
+                            canEdit={canEdit}
+                            onSave={(v) => onUpdate(row.id, k, v)}
+                            placeholder="Click para agregar"
+                            renderValue={
+                              canEdit
+                                ? undefined
+                                : (v) => (
+                                    <span style={{ color: k === "folio" ? C.navy : C.g700, fontWeight: k === "folio" ? 600 : 400 }}>{v || "—"}</span>
+                                  )
+                            }
+                          />
                         </td>
                       );
                     })}
+                    {isCont && (
+                      <td style={{ padding: "8px", textAlign: "center", whiteSpace: "nowrap" }}>
+                        {flagged && (
+                          <button
+                            onClick={() => onUpdate(row.id, "rtaRevisada", true)}
+                            title="Marcar revisado"
+                            style={{ background: C.green, color: C.white, border: "none", fontSize: 11, padding: "3px 6px", borderRadius: 3, cursor: "pointer", marginRight: 4 }}
+                          >
+                            ✓
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(row)}
+                          title="Eliminar factura"
+                          style={{ background: "none", color: C.red, border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "2px 6px" }}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    )}
                   </tr>
 
                   {isExpanded && (
                     <tr style={{ background: C.off }}>
-                      <td colSpan={mainCols.length + 1} style={{ padding: "12px 20px 16px 44px" }}>
+                      <td colSpan={mainCols.length + 1 + (isCont ? 1 : 0)} style={{ padding: "12px 20px 16px 44px" }}>
                         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.accent, textTransform: "uppercase", marginBottom: 8 }}>
                           Detalle completo
                         </div>
@@ -188,7 +296,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
             })}
             {data.length === 0 && (
               <tr>
-                <td colSpan={mainCols.length + 1} style={{ padding: 48, textAlign: "center" }}>
+                <td colSpan={mainCols.length + 1 + (isCont ? 1 : 0)} style={{ padding: 48, textAlign: "center" }}>
                   <div className="empty-state">
                     <span className="empty-state-icon">🗂️</span>
                     <span style={{ color: C.g700, fontSize: 13, fontWeight: 600 }}>No se encontraron facturas</span>
@@ -204,7 +312,7 @@ export default function FacturasTable({ data, role, onUpdate, totalCount }) {
         <span>
           Mostrando {data.length} de {totalCount} facturas
         </span>
-        <span>{isCont ? "Click en estado u observación para editar · ▸ expande detalle" : "Click en Rta. Compras para responder · ▸ expande detalle"}</span>
+        <span>{isCont ? "Click en cualquier celda para editar · ▸ expande detalle" : "Click en Rta. Compras para responder · ▸ expande detalle"}</span>
       </div>
     </div>
   );

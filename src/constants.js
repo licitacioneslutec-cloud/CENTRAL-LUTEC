@@ -31,7 +31,7 @@ export const DEPARTMENTS = [
 ];
 
 // ─── Sample data ───
-export const SAMPLE_NOVEDADES = [
+export const SAMPLE_FACTURAS = [
   { id:1, tipoDoc:"Factura electrónica", cufe:"6e4b9cc56e4efc925699b5b425e558819657285ba043040ef957e43bde36be79a848651cd028aa98b4020780a14b6be2", folio:"41553835", prefijo:"", divisa:"COP", formaPago:"1", medioPago:"42", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 15:23:07", nitEmisor:"860001022", nombreEmisor:"CASA EDITORIAL EL TIEMPO S.A.", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC SAS", iva:53580, total:335580, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"CONTABILIZADO", observacion:"", rtaCompras:"NO ES DE COMPRAS" },
   { id:2, tipoDoc:"Factura electrónica", cufe:"7fa927a5157d34483ccd146b8ac83800c2bdb041048196fd02e9e6ef9acc95694d3e5a19b49c379cb92ff05ce0c91dab", folio:"25419", prefijo:"FVE", divisa:"COP", formaPago:"2", medioPago:"1", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 17:14:47", nitEmisor:"900199049", nombreEmisor:"DISTRIELECTRICOS BKM S.A.S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:1050674, total:6580539, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"PENDIENTE", observacion:"", rtaCompras:"NO FACTURARON CAJA DE INSPECCIÓN 30X30 LUT00879" },
   { id:3, tipoDoc:"Factura electrónica", cufe:"936b099792a61240bb84e643c1695ae6f5677ca542f97f2b1bc079cf5bdad30e311604585d8002afea4480d07c290579", folio:"5225", prefijo:"LS", divisa:"COP", formaPago:"2", medioPago:"ZZZ", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 10:23:58", nitEmisor:"900961005", nombreEmisor:"LOPEZ SERVICE SAS", nitReceptor:"900491816", nombreReceptor:"Grupo Lutec S.A.S.", iva:83908, total:525531, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"RECHAZADO", observacion:"OC 27164,27156", rtaCompras:"NO ES DE COMPRAS" },
@@ -40,41 +40,41 @@ export const SAMPLE_NOVEDADES = [
   { id:6, tipoDoc:"Factura electrónica", cufe:"e4c49e51268e4c0dd671762cccb773fa2ae0870a05d1242c750392ad31046c823edbcf93e2518b9524b3df3be3e08718", folio:"13869", prefijo:"ELEC", divisa:"COP", formaPago:"2", medioPago:"ZZZ", fechaEmision:"18-08-2026", fechaRecepcion:"18-08-2026 17:36:05", nitEmisor:"901457522", nombreEmisor:"C.I. IMPORTADORES DE DATOS Y SEGURIDAD S.A.S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC SAS", iva:10125860, total:63419860, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"", rtaCompras:"OC 27259" },
   { id:7, tipoDoc:"Factura electrónica", cufe:"dac5b0b35ac90077f211fc1079d43af5bd5661d250e10f2f9a4bbea5d7f3d7793197749ba86cd486ae13bc745fb78491", folio:"1008079", prefijo:"SBO", divisa:"COP", formaPago:"2", medioPago:"30", fechaEmision:"18-08-2026", fechaRecepcion:"18-08-2026 09:42:22", nitEmisor:"901254982", nombreEmisor:"DISTRIBUCIONES ELECTRICAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:1927283, total:12070879, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"", rtaCompras:"OC 26952" },
   { id:8, tipoDoc:"Factura electrónica", cufe:"7255898883bc385787c43e941756341f4d40f9f175d4f4bb2aadfd742fbdd0c4cd870e29040f02759801b481ac09f328", folio:"25430", prefijo:"FVE", divisa:"COP", formaPago:"2", medioPago:"1", fechaEmision:"18-08-2026", fechaRecepcion:"18-08-2026 10:36:10", nitEmisor:"900199049", nombreEmisor:"DISTRIELECTRICOS BKM S.A.S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:494868, total:3099439, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"", rtaCompras:"REALIZADO" },
-];
-
-export const SAMPLE_NO_RADICADAS = [
-  { id:101, tipoDoc:"Factura electrónica", cufe:"671099d495dfcb008b5e5efe7b653efcb26af48d01c4fcab03970626c409e5a365a9139c645921e3c78797f1f4413bc2", folio:"2591", prefijo:"ECO", divisa:"COP", formaPago:"2", medioPago:"ZZZ", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 17:13:56", nitEmisor:"900762116", nombreEmisor:"ECOENERGIA TECNOLOGIA INNOVACION S A S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC SAS", iva:269555, total:1688266, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"no radicadas en Monday", rtaCompras:"" },
-  { id:102, tipoDoc:"Factura electrónica", cufe:"e7a166fa4326b33dcadcae0e2bab9715bb5b1385392fa00eca192927592feade10d594a9ad5768ab72bbca9d6515af6b", folio:"1363697", prefijo:"FEPQ", divisa:"COP", formaPago:"2", medioPago:"47", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 08:33:41", nitEmisor:"830087721", nombreEmisor:"ILUMINACION Y MATERIALES ELECTRICOS SAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S.A.S.", iva:1017244, total:6371164, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"no radicadas en Monday", rtaCompras:"" },
-  { id:103, tipoDoc:"Factura electrónica", cufe:"bedeac36140cd9c1f8f55b1b61fa590d116cc7e409bcc31391eb6ed1c9fa64b0f3c94aae40610ae3cd27aed2be55faec", folio:"315", prefijo:"FEV", divisa:"COP", formaPago:"2", medioPago:"ZZZ", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 22:01:48", nitEmisor:"901865641", nombreEmisor:"IXACTECH SAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC SAS", iva:104120, total:652120, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"no radicadas en Monday", rtaCompras:"" },
-  { id:104, tipoDoc:"Factura electrónica", cufe:"91054c7a21936070b6b7e993cd745f0203b1e8640c0c0f0c5426e112c72ecb3e76950a3939eb70a4234e936b7a2d12d6", folio:"14200", prefijo:"FUZU", divisa:"COP", formaPago:"2", medioPago:"1", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 13:41:31", nitEmisor:"860047906", nombreEmisor:"MARPED GROUP S.A.S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:6612, total:41412, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"no radicadas en Monday", rtaCompras:"" },
-  { id:105, tipoDoc:"Factura electrónica", cufe:"01d68936f03a23a6b405f785ba18af9397c7d9751ed62491b4461abe28197364645ce30e30d98a8631d29212708e49e4", folio:"25197", prefijo:"SCA", divisa:"COP", formaPago:"2", medioPago:"30", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 11:39:22", nitEmisor:"901254982", nombreEmisor:"DISTRIBUCIONES ELECTRICAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:102271, total:640537, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"", observacion:"no radicadas en Monday", rtaCompras:"" },
+  // Former SAMPLE_NO_RADICADAS rows, folded in with estado: "NO RADICADA".
+  { id:101, tipoDoc:"Factura electrónica", cufe:"671099d495dfcb008b5e5efe7b653efcb26af48d01c4fcab03970626c409e5a365a9139c645921e3c78797f1f4413bc2", folio:"2591", prefijo:"ECO", divisa:"COP", formaPago:"2", medioPago:"ZZZ", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 17:13:56", nitEmisor:"900762116", nombreEmisor:"ECOENERGIA TECNOLOGIA INNOVACION S A S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC SAS", iva:269555, total:1688266, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"NO RADICADA", observacion:"no radicadas en Monday", rtaCompras:"" },
+  { id:102, tipoDoc:"Factura electrónica", cufe:"e7a166fa4326b33dcadcae0e2bab9715bb5b1385392fa00eca192927592feade10d594a9ad5768ab72bbca9d6515af6b", folio:"1363697", prefijo:"FEPQ", divisa:"COP", formaPago:"2", medioPago:"47", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 08:33:41", nitEmisor:"830087721", nombreEmisor:"ILUMINACION Y MATERIALES ELECTRICOS SAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S.A.S.", iva:1017244, total:6371164, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"NO RADICADA", observacion:"no radicadas en Monday", rtaCompras:"" },
+  { id:103, tipoDoc:"Factura electrónica", cufe:"bedeac36140cd9c1f8f55b1b61fa590d116cc7e409bcc31391eb6ed1c9fa64b0f3c94aae40610ae3cd27aed2be55faec", folio:"315", prefijo:"FEV", divisa:"COP", formaPago:"2", medioPago:"ZZZ", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 22:01:48", nitEmisor:"901865641", nombreEmisor:"IXACTECH SAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC SAS", iva:104120, total:652120, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"NO RADICADA", observacion:"no radicadas en Monday", rtaCompras:"" },
+  { id:104, tipoDoc:"Factura electrónica", cufe:"91054c7a21936070b6b7e993cd745f0203b1e8640c0c0f0c5426e112c72ecb3e76950a3939eb70a4234e936b7a2d12d6", folio:"14200", prefijo:"FUZU", divisa:"COP", formaPago:"2", medioPago:"1", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 13:41:31", nitEmisor:"860047906", nombreEmisor:"MARPED GROUP S.A.S", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:6612, total:41412, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"NO RADICADA", observacion:"no radicadas en Monday", rtaCompras:"" },
+  { id:105, tipoDoc:"Factura electrónica", cufe:"01d68936f03a23a6b405f785ba18af9397c7d9751ed62491b4461abe28197364645ce30e30d98a8631d29212708e49e4", folio:"25197", prefijo:"SCA", divisa:"COP", formaPago:"2", medioPago:"30", fechaEmision:"14-08-2026", fechaRecepcion:"14-08-2026 11:39:22", nitEmisor:"901254982", nombreEmisor:"DISTRIBUCIONES ELECTRICAS", nitReceptor:"900491816", nombreReceptor:"GRUPO LUTEC S A S", iva:102271, total:640537, estadoDoc:"Aprobado con notificación", grupo:"Recibido", estado:"NO RADICADA", observacion:"no radicadas en Monday", rtaCompras:"" },
 ];
 
 // ─── Estados (extensible list, not enum) ───
-export const ESTADOS = ["CONTABILIZADO", "PENDIENTE", "RECHAZADO"];
+export const ESTADOS = ["CONTABILIZADO", "PENDIENTE", "RECHAZADO", "NO RADICADA"];
 
 // ─── Column definitions ───
 export const ALL_FIELDS = [
-  { key: "tipoDoc", label: "Tipo Doc.", w: 100 },
-  { key: "cufe", label: "CUFE/CUDE", w: 120 },
-  { key: "folio", label: "Folio", w: 90 },
-  { key: "prefijo", label: "Prefijo", w: 70 },
-  { key: "divisa", label: "Divisa", w: 60 },
-  { key: "formaPago", label: "F. Pago", w: 65 },
-  { key: "medioPago", label: "M. Pago", w: 65 },
-  { key: "fechaEmision", label: "F. Emisión", w: 95 },
-  { key: "fechaRecepcion", label: "F. Recepción", w: 95 },
-  { key: "nitEmisor", label: "NIT Emisor", w: 95 },
-  { key: "nombreEmisor", label: "Nombre Emisor", w: 180 },
-  { key: "nitReceptor", label: "NIT Receptor", w: 95 },
-  { key: "nombreReceptor", label: "Nombre Receptor", w: 140 },
-  { key: "iva", label: "IVA", w: 90, numeric: true },
-  { key: "total", label: "Total", w: 100, numeric: true },
-  { key: "estadoDoc", label: "Estado Doc.", w: 110 },
-  { key: "grupo", label: "Grupo", w: 80 },
+  { key: "tipoDoc", label: "Tipo Doc.", w: 100, editable: "contabilidad", type: "text" },
+  { key: "cufe", label: "CUFE/CUDE", w: 120, editable: "contabilidad", type: "text" },
+  { key: "folio", label: "Folio", w: 90, editable: "contabilidad", type: "text" },
+  { key: "prefijo", label: "Prefijo", w: 70, editable: "contabilidad", type: "text" },
+  { key: "divisa", label: "Divisa", w: 60, editable: "contabilidad", type: "text" },
+  { key: "formaPago", label: "F. Pago", w: 65, editable: "contabilidad", type: "text" },
+  { key: "medioPago", label: "M. Pago", w: 65, editable: "contabilidad", type: "text" },
+  { key: "fechaEmision", label: "F. Emisión", w: 95, editable: "contabilidad", type: "text" },
+  { key: "fechaRecepcion", label: "F. Recepción", w: 95, editable: "contabilidad", type: "text" },
+  { key: "nitEmisor", label: "NIT Emisor", w: 95, editable: "contabilidad", type: "text" },
+  { key: "nombreEmisor", label: "Nombre Emisor", w: 180, editable: "contabilidad", type: "text" },
+  { key: "nitReceptor", label: "NIT Receptor", w: 95, editable: "contabilidad", type: "text" },
+  { key: "nombreReceptor", label: "Nombre Receptor", w: 140, editable: "contabilidad", type: "text" },
+  { key: "iva", label: "IVA", w: 90, numeric: true, editable: "contabilidad", type: "text" },
+  { key: "total", label: "Total", w: 100, numeric: true, editable: "contabilidad", type: "text" },
+  { key: "estadoDoc", label: "Estado Doc.", w: 110, editable: "contabilidad", type: "text" },
+  { key: "grupo", label: "Grupo", w: 80, editable: "contabilidad", type: "text" },
   { key: "estado", label: "Estado Contab.", w: 120, editable: "contabilidad", type: "select" },
   { key: "observacion", label: "Observación Contab.", w: 160, editable: "contabilidad", type: "text" },
   { key: "rtaCompras", label: "Rta. Compras", w: 180, editable: "compras", type: "text" },
+  { key: "nERP", label: "N° ERP", w: 100, editable: "contabilidad", type: "text" },
+  { key: "valorContabilizado", label: "Val. Contabilizado", w: 130, editable: "contabilidad", type: "text", numeric: true },
 ];
 
 // ─── Color palette ───
