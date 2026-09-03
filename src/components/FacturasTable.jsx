@@ -273,14 +273,29 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           Detalle completo
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                          {ALL_FIELDS.map((f) => (
-                            <div key={f.key} style={{ fontSize: 11 }}>
-                              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
-                                {f.label}:{" "}
-                              </span>
-                              <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(row[f.key]) : row[f.key] || "—"}</span>
-                            </div>
-                          ))}
+                          {ALL_FIELDS.map((f) => {
+                            const canEditDetail = canEditField(f, isCont, isCompras);
+                            return (
+                              <div key={f.key} style={{ fontSize: 11 }}>
+                                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                                  {f.label}:{" "}
+                                </span>
+                                <EditableCell
+                                  value={row[f.key]}
+                                  type={f.type === "select" ? "select" : "text"}
+                                  options={f.type === "select" ? ESTADOS : []}
+                                  canEdit={canEditDetail}
+                                  onSave={(v) => onUpdate(row.id, f.key, f.numeric ? parseNum(v) : v)}
+                                  renderValue={
+                                    f.key === "estado"
+                                      ? (v) => <Badge estado={v} />
+                                      : (v) => <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(v) : v || "—"}</span>
+                                  }
+                                  placeholder="Click para editar"
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                         <div style={{ marginTop: 8, fontSize: 11 }}>
                           <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>

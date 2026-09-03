@@ -60,12 +60,18 @@ const NUMERIC_KEYS = new Set(["iva", "total", "valorContabilizado"]);
 
 // Maps one Excel row (object keyed by column header) to a factura record
 // keyed by code field names.
+// Build a trimmed+lowercased lookup so headers with extra whitespace still match.
+const COL_LOOKUP = Object.fromEntries(
+  Object.entries(COLUMN_MAP).map(([col, key]) => [col.trim().toLowerCase(), key])
+);
+
 function mapRow(row) {
   const out = {};
-  for (const [col, key] of Object.entries(COLUMN_MAP)) {
-    if (!(col in row)) continue;
-    const raw = row[col];
-    out[key] = NUMERIC_KEYS.has(key) ? parseNum(raw) : raw;
+  for (const [col, raw] of Object.entries(row)) {
+    const key = COL_LOOKUP[col.trim().toLowerCase()];
+    if (!key) continue;
+    if (key in out) continue;
+    out[key] = NUMERIC_KEYS.has(key) ? parseNum(raw) : typeof raw === "string" ? raw.trim() : raw;
   }
   return out;
 }
