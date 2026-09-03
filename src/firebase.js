@@ -1,8 +1,8 @@
 // ─── Firebase (Realtime Database) config and CRUD helpers ───
 // One Firebase project shared by all internal modules.
-// Structure: facturas/{novedades|noRadicadas}/{cufeHash}, config/estados
+// Structure: facturas/{cufeHash}, config/estados
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, set, update, get } from "firebase/database";
+import { getDatabase, ref, onValue, set, update, get, remove } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -35,21 +35,31 @@ export function toSafeKey(cufe) {
   return String(cufe).replace(/[.#$[\]]/g, "_");
 }
 
-// Subscribes to facturas/{tab} in real time. Calls callback(data) on every change
+// Subscribes to facturas/ in real time. Calls callback(data) on every change
 // (data is Firebase's object of {cufeHash: factura} or null). Returns an unsubscribe fn.
-export function subscribeFacturas(db, tab, callback) {
-  const facturasRef = ref(db, `facturas/${tab}`);
+export function subscribeFacturas(db, callback) {
+  const facturasRef = ref(db, "facturas");
   return onValue(facturasRef, (snapshot) => callback(snapshot.val()));
 }
 
-// Writes (overwrites) one factura at facturas/{tab}/{cufeHash}.
-export function writeFactura(db, tab, cufeHash, data) {
-  return set(ref(db, `facturas/${tab}/${toSafeKey(cufeHash)}`), data);
+// Writes (overwrites) one factura at facturas/{cufeHash}.
+export function writeFactura(db, cufeHash, data) {
+  return set(ref(db, `facturas/${toSafeKey(cufeHash)}`), data);
 }
 
 // Updates specific fields of one factura without overwriting the rest.
-export function updateFactura(db, tab, cufeHash, fields) {
-  return update(ref(db, `facturas/${tab}/${toSafeKey(cufeHash)}`), fields);
+export function updateFactura(db, cufeHash, fields) {
+  return update(ref(db, `facturas/${toSafeKey(cufeHash)}`), fields);
+}
+
+// Removes one factura.
+export function removeFactura(db, cufeHash) {
+  return remove(ref(db, `facturas/${toSafeKey(cufeHash)}`));
+}
+
+// Removes all facturas.
+export function removeAllFacturas(db) {
+  return remove(ref(db, "facturas"));
 }
 
 // Reads config/estados once. Returns a promise resolving to an array of estado strings.
