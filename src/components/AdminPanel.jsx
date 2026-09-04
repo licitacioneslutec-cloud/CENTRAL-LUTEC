@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C } from "../constants";
 import { hashPassword } from "./PasswordGate";
-import { initFirebase, subscribeUsers, createUser, deleteUser } from "../firebase";
+import { initFirebase, subscribeUsers, createUser, deleteUser, updateUser } from "../firebase";
 
 const input = { fontSize: 12, padding: "8px 10px", border: `1px solid ${C.g200}`, borderRadius: 4, outline: "none", width: "100%" };
 const card = { background: C.white, border: `1px solid ${C.g200}`, borderRadius: 8, boxShadow: "0 1px 2px rgba(0,0,0,.04)", padding: 16 };
@@ -16,6 +16,8 @@ export default function AdminPanel({ user, onBack }) {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("contabilidad");
   const [toast, setToast] = useState(null);
+  const [editingPw, setEditingPw] = useState(null);
+  const [newPw, setNewPw] = useState("");
 
   useEffect(() => {
     dbRef.current = initFirebase();
@@ -48,6 +50,15 @@ export default function AdminPanel({ user, onBack }) {
   const handleDelete = async (id) => {
     await deleteUser(dbRef.current, id);
     showToast("Usuario eliminado.");
+  };
+
+  const handleChangePw = async (id) => {
+    if (!newPw.trim()) return;
+    const passwordHash = await hashPassword(newPw);
+    await updateUser(dbRef.current, id, { passwordHash });
+    setEditingPw(null);
+    setNewPw("");
+    showToast("Contraseña actualizada.");
   };
 
   return (
@@ -107,14 +118,38 @@ export default function AdminPanel({ user, onBack }) {
                   </td>
                   <td style={td}>{u.createdBy}</td>
                   <td style={td}>{u.createdAt ? new Date(u.createdAt).toLocaleString("es-CO") : ""}</td>
-                  <td style={td}>
-                    {u.id !== user.id && (
-                      <button
-                        onClick={() => handleDelete(u.id)}
-                        style={{ background: "none", color: C.red, border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "2px 6px" }}
-                      >
-                        ✕
-                      </button>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                    {editingPw === u.id ? (
+                      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                        <input
+                          type="password"
+                          placeholder="Nueva contraseña"
+                          value={newPw}
+                          onChange={(e) => setNewPw(e.target.value)}
+                          autoFocus
+                          style={{ fontSize: 11, padding: "3px 6px", border: `1px solid ${C.g200}`, borderRadius: 3, width: 120 }}
+                        />
+                        <button onClick={() => handleChangePw(u.id)} style={{ background: C.accent, color: C.navy, border: "none", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 3, cursor: "pointer" }}>OK</button>
+                        <button onClick={() => { setEditingPw(null); setNewPw(""); }} style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, padding: "3px 8px", borderRadius: 3, cursor: "pointer" }}>X</button>
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => { setEditingPw(u.id); setNewPw(""); }}
+                          title="Cambiar contraseña"
+                          style={{ background: "none", color: C.blue, border: "none", fontSize: 13, cursor: "pointer", padding: "2px 6px" }}
+                        >
+                          🔑
+                        </button>
+                        {u.id !== user.id && (
+                          <button
+                            onClick={() => handleDelete(u.id)}
+                            style={{ background: "none", color: C.red, border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "2px 6px" }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
