@@ -2,7 +2,7 @@
 // One Firebase project shared by all internal modules.
 // Structure: facturas/{cufeHash}, config/estados
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, set, update, get, remove } from "firebase/database";
+import { getDatabase, ref, onValue, set, update, get, remove, push } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -66,4 +66,36 @@ export function removeAllFacturas(db) {
 export async function loadEstados(db) {
   const snapshot = await get(ref(db, "config/estados"));
   return snapshot.exists() ? snapshot.val() : [];
+}
+
+// ─── User management ───
+export function subscribeUsers(db, callback) {
+  return onValue(ref(db, "users"), (snapshot) => callback(snapshot.val()));
+}
+
+export function createUser(db, userData) {
+  const newRef = push(ref(db, "users"));
+  return set(newRef, userData).then(() => newRef.key);
+}
+
+export function deleteUser(db, userId) {
+  return remove(ref(db, "users/" + userId));
+}
+
+export async function getUsers(db) {
+  const snapshot = await get(ref(db, "users"));
+  return snapshot.exists() ? snapshot.val() : null;
+}
+
+export async function seedAdmin(db, adminHash) {
+  const users = await getUsers(db);
+  if (users) return;
+  const newRef = push(ref(db, "users"));
+  await set(newRef, {
+    name: "Catalina Carranza",
+    passwordHash: adminHash,
+    role: "admin",
+    createdBy: "sistema",
+    createdAt: new Date().toISOString(),
+  });
 }

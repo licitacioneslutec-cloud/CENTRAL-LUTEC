@@ -45,7 +45,7 @@ const dateInput = {
 };
 
 // ─── Facturas module: search/filters, stats and table for a given role ───
-export default function FacturasModule({ role, onBack }) {
+export default function FacturasModule({ user, role, onBack }) {
   const isCont = role === "contabilidad";
   const [toast, setToast] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -53,12 +53,6 @@ export default function FacturasModule({ role, onBack }) {
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
   const [bellOpen, setBellOpen] = useState(false);
   const notifiedRef = useRef(false);
-
-  const [username, setUsername] = useState(() => {
-    try { return localStorage.getItem("lutec_username") || ""; } catch { return ""; }
-  });
-  const [showNameModal, setShowNameModal] = useState(!username);
-  const [nameInput, setNameInput] = useState("");
 
   const { data, loading, updateField, addFactura, bulkAdd, deleteFactura, deleteAll } = useFacturas();
 
@@ -123,14 +117,6 @@ export default function FacturasModule({ role, onBack }) {
     filteredStats,
   } = useFilters(data);
 
-  const handleSaveName = () => {
-    const name = nameInput.trim();
-    if (!name) return;
-    try { localStorage.setItem("lutec_username", name); } catch {}
-    setUsername(name);
-    setShowNameModal(false);
-  };
-
   return (
     <div style={{ minHeight: "100vh", background: C.off, fontFamily: "system-ui,-apple-system,sans-serif" }}>
       <header className="app-header" style={{ background: C.navy, padding: "0 24px" }}>
@@ -170,15 +156,9 @@ export default function FacturasModule({ role, onBack }) {
             >
               {role}
             </div>
-            {username && (
-              <button
-                onClick={() => { setNameInput(username); setShowNameModal(true); }}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,.7)", fontSize: 11, cursor: "pointer", padding: 0 }}
-                title="Cambiar nombre de usuario"
-              >
-                👤 {username}
-              </button>
-            )}
+            <span style={{ color: "rgba(255,255,255,.7)", fontSize: 11 }}>
+              👤 {user.name}
+            </span>
           </div>
           <div style={{ position: "relative" }}>
             <button
@@ -281,7 +261,7 @@ export default function FacturasModule({ role, onBack }) {
             data={filtered}
             allData={data}
             role={role}
-            onUpdate={(id, key, value) => updateField(id, key, value, username)}
+            onUpdate={(id, key, value) => updateField(id, key, value, user.name)}
             onDelete={handleDeleteRow}
             totalCount={data.length}
             onWarn={showToast}
@@ -307,52 +287,6 @@ export default function FacturasModule({ role, onBack }) {
           }}
         >
           {toast}
-        </div>
-      )}
-
-      {showNameModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-          }}
-        >
-          <div style={{ background: C.white, borderRadius: 8, padding: 24, maxWidth: 360, textAlign: "center", boxShadow: "0 8px 24px rgba(0,0,0,.2)" }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>👤</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 6 }}>¿Cuál es tu nombre?</div>
-            <div style={{ fontSize: 12, color: C.g700, marginBottom: 12 }}>
-              Se usará para registrar quién realiza cambios en las facturas.
-            </div>
-            <input
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
-              autoFocus
-              placeholder="Ej: María García"
-              style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: "7px 10px", border: `1px solid ${C.g200}`, borderRadius: 4, marginBottom: 14 }}
-            />
-            <button
-              onClick={handleSaveName}
-              disabled={!nameInput.trim()}
-              style={{
-                background: nameInput.trim() ? C.accent : C.g200,
-                color: C.white,
-                border: "none",
-                fontSize: 12,
-                fontWeight: 700,
-                padding: "8px 20px",
-                borderRadius: 4,
-                cursor: nameInput.trim() ? "pointer" : "not-allowed",
-              }}
-            >
-              Guardar
-            </button>
-          </div>
         </div>
       )}
 

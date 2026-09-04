@@ -3,18 +3,46 @@ import { DEPARTMENTS, C } from "../constants";
 import PasswordGate from "./PasswordGate";
 
 // ─── Portal Landing ───
-export default function Portal({ onNavigate }) {
+export default function Portal({ user, onNavigate, onLogout }) {
   const [pendingExternal, setPendingExternal] = useState(null);
+
+  const visibleDepts = DEPARTMENTS.map((dept) => ({
+    ...dept,
+    modules: dept.modules.filter((mod) => {
+      if (mod.type === "external") return true;
+      if (user.role === "admin") return true;
+      return mod.role === user.role;
+    }),
+  })).filter((dept) => dept.modules.length > 0);
 
   return (
     <div style={{ minHeight:"100vh", background:C.off, fontFamily:"system-ui,-apple-system,sans-serif" }}>
-      <header className="app-header" style={{ background:C.navy, padding:"16px 32px", display:"flex", alignItems:"center", gap:12 }}>
-        <div style={{ width:42, height:42, border:`2px solid ${C.accent}`, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <span style={{ color:C.white, fontSize:11, fontWeight:700, letterSpacing:1.5 }}>LUTEC</span>
+      <header className="app-header" style={{ background:C.navy, padding:"16px 32px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:42, height:42, border:`2px solid ${C.accent}`, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <span style={{ color:C.white, fontSize:11, fontWeight:700, letterSpacing:1.5 }}>LUTEC</span>
+          </div>
+          <div>
+            <div style={{ color:C.accent, fontSize:11, fontWeight:600, letterSpacing:2.5, textTransform:"uppercase" }}>Grupo Lutec S.A.S</div>
+            <div className="brand-title" style={{ color:C.white, fontSize:20, fontWeight:700 }}>PORTAL CORPORATIVO</div>
+          </div>
         </div>
-        <div>
-          <div style={{ color:C.accent, fontSize:11, fontWeight:600, letterSpacing:2.5, textTransform:"uppercase" }}>Grupo Lutec S.A.S</div>
-          <div className="brand-title" style={{ color:C.white, fontSize:20, fontWeight:700 }}>PORTAL CORPORATIVO</div>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <span style={{ color:"rgba(255,255,255,.7)", fontSize:12 }}>👤 {user.name}</span>
+          {user.role === "admin" && (
+            <button
+              onClick={() => onNavigate("admin")}
+              style={{ background:"rgba(255,255,255,.15)", border:"none", color:C.white, fontSize:11, padding:"5px 12px", borderRadius:3, cursor:"pointer" }}
+            >
+              ⚙️ Usuarios
+            </button>
+          )}
+          <button
+            onClick={onLogout}
+            style={{ background:"rgba(255,255,255,.15)", border:"none", color:C.white, fontSize:11, padding:"5px 12px", borderRadius:3, cursor:"pointer" }}
+          >
+            Salir
+          </button>
         </div>
       </header>
 
@@ -26,7 +54,7 @@ export default function Portal({ onNavigate }) {
         </div>
 
         <div style={{ display:"flex", flexDirection:"column", gap:28 }}>
-          {DEPARTMENTS.map((dept) => (
+          {visibleDepts.map((dept) => (
             <div key={dept.id}>
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, paddingBottom:8, borderBottom:`2px solid ${C.g200}` }}>
                 <span style={{ fontSize:22 }}>{dept.icon}</span>
@@ -51,7 +79,7 @@ export default function Portal({ onNavigate }) {
                           }
                           window.open(mod.url, '_blank');
                         }
-                        else onNavigate("facturas", mod.role, mod.password);
+                        else onNavigate("facturas", mod.role);
                       }}
                       disabled={isSoon}
                       style={{
