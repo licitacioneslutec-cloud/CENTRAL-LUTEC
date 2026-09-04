@@ -51,7 +51,7 @@ export default function FacturasModule({ role, onBack }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
-  const [reviewPopup, setReviewPopup] = useState(null);
+  const [bellOpen, setBellOpen] = useState(false);
   const notifiedRef = useRef(false);
 
   const [username, setUsername] = useState(() => {
@@ -99,17 +99,15 @@ export default function FacturasModule({ role, onBack }) {
     showToast("Factura eliminada.");
   };
 
-  // On load, if contabilidad has unreviewed compras answers, pop up a
-  // notification once (per mount) with a short beep.
+  const pendingCount = loading ? 0 : isCont
+    ? data.filter((r) => r.rtaCompras && r.rtaRevisada === false).length
+    : data.filter((r) => r.rtaContabilidad && r.rtaContRevisada === false).length;
+
   useEffect(() => {
-    if (!isCont || loading || notifiedRef.current) return;
-    const pending = data.filter((r) => r.rtaCompras && r.rtaRevisada === false).length;
-    if (pending > 0) {
-      notifiedRef.current = true;
-      setReviewPopup(pending);
-      playBeep();
-    }
-  }, [isCont, loading, data]);
+    if (loading || notifiedRef.current || pendingCount === 0) return;
+    notifiedRef.current = true;
+    playBeep();
+  }, [loading, pendingCount]);
 
   const {
     filtered,
@@ -180,6 +178,42 @@ export default function FacturasModule({ role, onBack }) {
               >
                 👤 {username}
               </button>
+            )}
+          </div>
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setBellOpen((v) => !v)}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: "4px 8px", position: "relative" }}
+              title={pendingCount > 0 ? `${pendingCount} respuesta(s) pendiente(s)` : "Sin pendientes"}
+            >
+              🔔
+              {pendingCount > 0 && (
+                <span style={{
+                  position: "absolute", top: 0, right: 2,
+                  background: C.red, color: C.white, fontSize: 9, fontWeight: 700,
+                  minWidth: 16, height: 16, borderRadius: 8,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  padding: "0 3px",
+                }}>
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+            {bellOpen && (
+              <div style={{
+                position: "absolute", right: 0, top: 36,
+                background: C.white, borderRadius: 6, padding: "12px 16px",
+                boxShadow: "0 4px 16px rgba(0,0,0,.2)", zIndex: 100, minWidth: 220,
+              }}>
+                {pendingCount > 0 ? (
+                  <div style={{ fontSize: 12, color: C.g700 }}>
+                    <strong style={{ color: C.navy }}>{pendingCount}</strong> respuesta{pendingCount === 1 ? "" : "s"} de{" "}
+                    <strong>{isCont ? "compras" : "contabilidad"}</strong> pendiente{pendingCount === 1 ? "" : "s"} de revisar.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.g500 }}>No hay respuestas pendientes.</div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -273,34 +307,6 @@ export default function FacturasModule({ role, onBack }) {
           }}
         >
           {toast}
-        </div>
-      )}
-
-      {reviewPopup && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-          }}
-        >
-          <div style={{ background: C.white, borderRadius: 8, padding: 24, maxWidth: 360, textAlign: "center", boxShadow: "0 8px 24px rgba(0,0,0,.2)" }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 6 }}>Respuestas pendientes</div>
-            <div style={{ fontSize: 12, color: C.g700, marginBottom: 16 }}>
-              Tiene {reviewPopup} respuesta{reviewPopup === 1 ? "" : "s"} de compras pendientes de revisar
-            </div>
-            <button
-              onClick={() => setReviewPopup(null)}
-              style={{ background: C.accent, color: C.white, border: "none", fontSize: 12, fontWeight: 700, padding: "8px 20px", borderRadius: 4, cursor: "pointer" }}
-            >
-              Cerrar
-            </button>
-          </div>
         </div>
       )}
 

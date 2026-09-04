@@ -49,7 +49,11 @@ export function useFacturas() {
         fields.lastEditedField = key;
       }
       if (key === "rtaCompras" && value) fields.rtaRevisada = false;
-      if (key === "rtaContabilidad" && value) fields.rtaRevisada = true;
+      if (key === "rtaContabilidad" && value) {
+        fields.rtaRevisada = true;
+        fields.rtaContRevisada = false;
+      }
+      if (key === "rtaContRevisada") { /* explicit mark */ }
       if (configured) {
         updateFactura(dbRef.current, id, fields);
       } else {
