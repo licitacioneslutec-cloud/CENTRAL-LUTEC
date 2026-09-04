@@ -1,19 +1,6 @@
 // ─── Company structure ───
 export const DEPARTMENTS = [
   {
-    id: "presupuestos", name: "Presupuestos", icon: "📐", desc: "Cotizaciones y análisis de bolsas de proyectos",
-    modules: [
-      { id: "cotizaciones", name: "Cotizaciones Eléctricas", desc: "Gestión de cotizaciones por proyecto", type: "external", url: "https://cotizacioneslutec.netlify.app/", status: "activo", password: "3635088e5f50b74780054cb808bb38f1e0d75b5a1b8d19c70d8e1b1bc091f4e2" },
-      { id: "bolsas", name: "Bolsas", desc: "Análisis y control de bolsas de proyectos", type: "external", url: "https://effervescent-haupia-f573df.netlify.app/", status: "activo", password: "3635088e5f50b74780054cb808bb38f1e0d75b5a1b8d19c70d8e1b1bc091f4e2" },
-    ],
-  },
-  {
-    id: "ingenieria", name: "Ingeniería", icon: "⚡", desc: "Gestión de contratos y recarga de proyectos",
-    modules: [
-      { id: "recarga", name: "Recarga Contratos", desc: "Control y seguimiento de recarga de contratos", type: "external", url: "https://contratos-ingenieria.netlify.app/", status: "activo", password: "ca9bbefa0b92bd0dae875d23711c2dc947d10811674284b0b831f863bcef4d05" },
-    ],
-  },
-  {
     id: "compras", name: "Compras", icon: "🛒", desc: "Actualización Monday, estados mensuales y aclaraciones de facturación",
     modules: [
       { id: "monday", name: "Actualización Monday", desc: "Sincronización y actualización de tableros Monday", type: "external", url: "https://compras-comisiones.netlify.app/importar.html", status: "activo", password: "70cdf58e67eae5886ad2e3bd5fb1b8c5bae65db772180f64cb5e9066b13f0a72" },

@@ -90,12 +90,13 @@ export async function getUsers(db) {
 export async function seedAdmin(db, adminHash) {
   const users = await getUsers(db);
   if (users) return;
-  const newRef = push(ref(db, "users"));
-  await set(newRef, {
-    name: "Catalina Carranza",
-    passwordHash: adminHash,
-    role: "admin",
-    createdBy: "sistema",
-    createdAt: new Date().toISOString(),
-  });
+  const now = new Date().toISOString();
+  const admins = [
+    { name: "Catalina Carranza", role: "admin" },
+    { name: "Marco Torres", role: "admin" },
+  ];
+  for (const a of admins) {
+    const r = push(ref(db, "users"));
+    await set(r, { ...a, passwordHash: adminHash, createdBy: "sistema", createdAt: now });
+  }
 }
