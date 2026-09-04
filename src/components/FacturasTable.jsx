@@ -48,6 +48,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
   const rows = allData || data;
 
   const needsReview = (row) => Boolean(row.rtaCompras) && row.rtaRevisada === false;
+  const needsReviewByCompras = (row) => Boolean(row.rtaContabilidad) && row.rtaContRevisada === false;
   const hasFollowUp = (row) => Boolean(row.rtaCompras) && Boolean(row.rtaContabilidad);
 
   const handleDelete = (row) => {
@@ -69,26 +70,27 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                   </th>
                 );
               })}
-              {isCont && <th style={{ ...th, width: 60 }}></th>}
+              <th style={{ ...th, width: 60 }}></th>
             </tr>
           </thead>
           <tbody>
             {data.map((row) => {
               const isExpanded = expandedRow === row.id;
               const flagged = needsReview(row);
+              const flaggedForCompras = needsReviewByCompras(row);
               return (
                 <Fragment key={row.id}>
                   <tr
                     style={{
                       borderBottom: `1px solid ${C.g100}`,
-                      borderLeft: hasFollowUp(row) ? `3px solid ${C.blue}` : flagged ? `3px solid ${C.green}` : "3px solid transparent",
-                      background: hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent",
+                      borderLeft: flaggedForCompras ? `3px solid ${C.blue}` : hasFollowUp(row) ? `3px solid ${C.blue}` : flagged ? `3px solid ${C.green}` : "3px solid transparent",
+                      background: flaggedForCompras ? C.blueL : hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent",
                     }}
                     onMouseEnter={(e) => {
-                      if (!hasFollowUp(row) && !flagged) e.currentTarget.style.background = C.off;
+                      if (!flaggedForCompras && !hasFollowUp(row) && !flagged) e.currentTarget.style.background = C.off;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent";
+                      e.currentTarget.style.background = flaggedForCompras ? C.blueL : hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent";
                     }}
                   >
                     <td style={{ padding: "8px", textAlign: "center" }}>
@@ -260,17 +262,26 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                         </td>
                       );
                     })}
-                    {isCont && (
-                      <td style={{ padding: "8px", textAlign: "center", whiteSpace: "nowrap" }}>
-                        {flagged && (
-                          <button
-                            onClick={() => onUpdate(row.id, "rtaRevisada", true)}
-                            title="Marcar revisado"
-                            style={{ background: C.green, color: C.white, border: "none", fontSize: 11, padding: "3px 6px", borderRadius: 3, cursor: "pointer", marginRight: 4 }}
-                          >
-                            ✓
-                          </button>
-                        )}
+                    <td style={{ padding: "8px", textAlign: "center", whiteSpace: "nowrap" }}>
+                      {isCont && flagged && (
+                        <button
+                          onClick={() => onUpdate(row.id, "rtaRevisada", true)}
+                          title="Marcar revisado"
+                          style={{ background: C.green, color: C.white, border: "none", fontSize: 11, padding: "3px 6px", borderRadius: 3, cursor: "pointer", marginRight: 4 }}
+                        >
+                          ✓
+                        </button>
+                      )}
+                      {isCompras && needsReviewByCompras(row) && (
+                        <button
+                          onClick={() => onUpdate(row.id, "rtaContRevisada", true)}
+                          title="Marcar revisado"
+                          style={{ background: C.blue, color: C.white, border: "none", fontSize: 11, padding: "3px 6px", borderRadius: 3, cursor: "pointer", marginRight: 4 }}
+                        >
+                          ✓
+                        </button>
+                      )}
+                      {isCont && (
                         <button
                           onClick={() => handleDelete(row)}
                           title="Eliminar factura"
@@ -278,13 +289,13 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                         >
                           ✕
                         </button>
-                      </td>
-                    )}
+                      )}
+                    </td>
                   </tr>
 
                   {isExpanded && (
                     <tr style={{ background: C.off }}>
-                      <td colSpan={mainCols.length + 1 + (isCont ? 1 : 0)} style={{ padding: "12px 20px 16px 44px" }}>
+                      <td colSpan={mainCols.length + 2} style={{ padding: "12px 20px 16px 44px" }}>
                         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.accent, textTransform: "uppercase", marginBottom: 8 }}>
                           Detalle completo
                         </div>
@@ -338,7 +349,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
             })}
             {data.length === 0 && (
               <tr>
-                <td colSpan={mainCols.length + 1 + (isCont ? 1 : 0)} style={{ padding: 48, textAlign: "center" }}>
+                <td colSpan={mainCols.length + 2} style={{ padding: 48, textAlign: "center" }}>
                   <div className="empty-state">
                     <span className="empty-state-icon">🗂️</span>
                     <span style={{ color: C.g700, fontSize: 13, fontWeight: 600 }}>No se encontraron facturas</span>

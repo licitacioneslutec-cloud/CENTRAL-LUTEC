@@ -24,6 +24,8 @@ Two roles access the facturas module with separate passwords (SHA-256 hashed in 
 - Dates stored as "DD-MM-YYYY", parsed with `parseDateDMY()` (local time). Date inputs produce "YYYY-MM-DD" — always append `"T00:00:00"` when constructing Date objects from input values to avoid UTC/local mismatch.
 - User identity stored in `localStorage("lutec_username")`, prompted once per browser. Edits stamp `lastEditedBy`, `lastEditedAt`, `lastEditedField` on each Firebase update.
 - `rtaRevisada` flag: set to `false` when compras writes `rtaCompras`, set to `true` when contabilidad writes `rtaContabilidad` or clicks the review checkmark.
+- `rtaContRevisada` flag: set to `false` when contabilidad writes `rtaContabilidad`, set to `true` when compras clicks the blue review checkmark. Mirrors `rtaRevisada` in the opposite direction.
+- Notifications: bell icon in header shows pending review count per role. `playBeep()` fires once on load when pendingCount > 0.
 - Stats: `stats` computes from full dataset (for filter chip counts), `filteredStats` computes from filtered data (for monetary totals display).
 
 ## Dev
