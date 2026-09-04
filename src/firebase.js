@@ -87,15 +87,20 @@ export async function getUsers(db) {
   return snapshot.exists() ? snapshot.val() : null;
 }
 
+export function updateUser(db, userId, fields) {
+  return update(ref(db, "users/" + userId), fields);
+}
+
 export async function seedAdmin(db, adminHash) {
   const users = await getUsers(db);
-  if (users) return;
-  const now = new Date().toISOString();
+  const existing = users ? Object.values(users).map((u) => u.name?.toLowerCase()) : [];
   const admins = [
     { name: "Catalina Carranza", role: "admin" },
     { name: "Marco Torres", role: "admin" },
   ];
+  const now = new Date().toISOString();
   for (const a of admins) {
+    if (existing.includes(a.name.toLowerCase())) continue;
     const r = push(ref(db, "users"));
     await set(r, { ...a, passwordHash: adminHash, createdBy: "sistema", createdAt: now });
   }
