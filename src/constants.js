@@ -18,14 +18,14 @@ export const DEPARTMENTS = [
     modules: [
       { id: "monday", name: "Actualización Monday", desc: "Sincronización y actualización de tableros Monday", type: "external", url: "https://compras-comisiones.netlify.app/importar.html", status: "activo", password: "70cdf58e67eae5886ad2e3bd5fb1b8c5bae65db772180f64cb5e9066b13f0a72" },
       { id: "estado-mensual", name: "Estado Compras Mensual", desc: "Reporte mensual del estado de compras", type: "external", url: "https://compras-comisiones.netlify.app/", status: "activo", password: "ba9cbe46d59bc71309a935f738b132fb6ee84f4add7fdecd637de502198f55a9" },
-      { id: "facturas", name: "Aclaración Facturas", desc: "Responder solicitudes de aclaración de contabilidad", type: "internal", status: "activo", role: "compras", password: "58f6204a2165a97bb2c7446019edaa46c4151b019fb8600f792aab60f2b51ded" },
+      { id: "facturas", name: "Aclaración Facturas", desc: "Responder solicitudes de aclaración de contabilidad", type: "internal", status: "activo", role: "compras" },
     ],
   },
   {
     id: "contabilidad", name: "Contabilidad", icon: "📊", desc: "Radicación de facturas y lectura de órdenes de compra DIAN",
     modules: [
-      { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad", password: "cf1734e6ec3d004aa57b8d823f19de0cd1cf766cf26fd7abffe19156f4ae0896" },
-      { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente", password: "9e4a5a8d628e61505211aad64d40834d493a53809608c297c6cda6242c251a0c" },
+      { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad" },
+      { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente" },
     ],
   },
 ];
