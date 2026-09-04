@@ -18,6 +18,7 @@ const mainCols = [
   "estado",
   "observacion",
   "rtaCompras",
+  "rtaContabilidad",
 ];
 
 const th = {
@@ -47,6 +48,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
   const rows = allData || data;
 
   const needsReview = (row) => Boolean(row.rtaCompras) && row.rtaRevisada === false;
+  const hasFollowUp = (row) => Boolean(row.rtaCompras) && Boolean(row.rtaContabilidad);
 
   const handleDelete = (row) => {
     if (window.confirm(`¿Eliminar la factura folio ${row.folio || row.id}?`)) onDelete?.(row.id);
@@ -79,14 +81,14 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                   <tr
                     style={{
                       borderBottom: `1px solid ${C.g100}`,
-                      borderLeft: flagged ? `3px solid ${C.green}` : "3px solid transparent",
-                      background: flagged ? C.greenL : "transparent",
+                      borderLeft: hasFollowUp(row) ? `3px solid ${C.blue}` : flagged ? `3px solid ${C.green}` : "3px solid transparent",
+                      background: hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent",
                     }}
                     onMouseEnter={(e) => {
-                      if (!flagged) e.currentTarget.style.background = C.off;
+                      if (!hasFollowUp(row) && !flagged) e.currentTarget.style.background = C.off;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = flagged ? C.greenL : "transparent";
+                      e.currentTarget.style.background = hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent";
                     }}
                   >
                     <td style={{ padding: "8px", textAlign: "center" }}>
@@ -138,6 +140,20 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                               type="text"
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaCompras", v)}
+                              placeholder="Click para responder"
+                            />
+                          </td>
+                        );
+                      }
+
+                      if (k === "rtaContabilidad") {
+                        return (
+                          <td key={k} style={{ padding: "8px", maxWidth: 180, fontSize: 11 }}>
+                            <EditableCell
+                              value={row.rtaContabilidad}
+                              type="text"
+                              canEdit={canEdit}
+                              onSave={(v) => onUpdate(row.id, "rtaContabilidad", v)}
                               placeholder="Click para responder"
                             />
                           </td>
@@ -303,6 +319,17 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           </span>
                           <span style={{ color: C.g700, fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{row.cufe}</span>
                         </div>
+                        {row.lastEditedBy && (
+                          <div style={{ marginTop: 8, fontSize: 11 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                              Última edición:{" "}
+                            </span>
+                            <span style={{ color: C.g700 }}>
+                              {row.lastEditedBy}
+                              {row.lastEditedAt && ` — ${new Date(row.lastEditedAt).toLocaleString("es-CO")}`}
+                            </span>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )}

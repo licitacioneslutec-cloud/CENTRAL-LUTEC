@@ -41,9 +41,15 @@ export function useFacturas() {
   // the sample record's `id` when running without Firebase). Answering
   // rtaCompras (compras role) flags the row as unreviewed for contabilidad.
   const updateField = useCallback(
-    (id, key, value) => {
+    (id, key, value, username) => {
       const fields = { [key]: value };
+      if (username) {
+        fields.lastEditedBy = username;
+        fields.lastEditedAt = new Date().toISOString();
+        fields.lastEditedField = key;
+      }
       if (key === "rtaCompras" && value) fields.rtaRevisada = false;
+      if (key === "rtaContabilidad" && value) fields.rtaRevisada = true;
       if (configured) {
         updateFactura(dbRef.current, id, fields);
       } else {
