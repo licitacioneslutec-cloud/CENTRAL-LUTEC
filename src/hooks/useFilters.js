@@ -31,8 +31,8 @@ export function useFilters(data) {
       );
     }
     if (fechaDesde || fechaHasta) {
-      const desde = fechaDesde ? new Date(fechaDesde) : null;
-      const hasta = fechaHasta ? new Date(fechaHasta) : null;
+      const desde = fechaDesde ? new Date(fechaDesde + "T00:00:00") : null;
+      const hasta = fechaHasta ? new Date(fechaHasta + "T00:00:00") : null;
       d = d.filter((r) => {
         const fe = parseDateDMY(r.fechaEmision);
         if (!fe) return false;
@@ -59,6 +59,16 @@ export function useFilters(data) {
     [data]
   );
 
+  const filteredStats = useMemo(
+    () => ({
+      count: filtered.length,
+      totalVal: filtered.reduce((s, r) => s + (r.total || 0), 0),
+      totalIva: filtered.reduce((s, r) => s + (r.iva || 0), 0),
+      totalValContabilizado: filtered.reduce((s, r) => s + (r.valorContabilizado || 0), 0),
+    }),
+    [filtered]
+  );
+
   return {
     filtered,
     search,
@@ -70,5 +80,6 @@ export function useFilters(data) {
     fechaHasta,
     setFechaHasta,
     stats,
+    filteredStats,
   };
 }

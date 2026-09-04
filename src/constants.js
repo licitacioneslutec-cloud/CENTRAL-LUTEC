@@ -73,6 +73,7 @@ export const ALL_FIELDS = [
   { key: "estado", label: "Estado Contab.", w: 120, editable: "contabilidad", type: "select" },
   { key: "observacion", label: "Observación Contab.", w: 160, editable: "contabilidad", type: "text" },
   { key: "rtaCompras", label: "Rta. Compras", w: 180, editable: "compras", type: "text" },
+  { key: "rtaContabilidad", label: "Rta. Contabilidad", w: 180, editable: "contabilidad", type: "text" },
   { key: "nERP", label: "N° ERP", w: 100, editable: "contabilidad", type: "text" },
   { key: "valorContabilizado", label: "Val. Contabilizado", w: 130, editable: "contabilidad", type: "text", numeric: true },
 ];
