@@ -21,13 +21,10 @@ export function useFilters(data) {
     }
     if (search) {
       const s = search.toLowerCase();
+      const has = (v) => v != null && String(v).toLowerCase().includes(s);
       d = d.filter(
         (r) =>
-          r.folio?.toLowerCase().includes(s) ||
-          r.nombreEmisor?.toLowerCase().includes(s) ||
-          r.cufe?.toLowerCase().includes(s) ||
-          r.rtaCompras?.toLowerCase().includes(s) ||
-          r.nitEmisor?.includes(s)
+          has(r.folio) || has(r.nombreEmisor) || has(r.cufe) || has(r.rtaCompras) || has(r.nitEmisor)
       );
     }
     if (fechaDesde || fechaHasta) {
