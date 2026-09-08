@@ -75,12 +75,14 @@ export default function EditableCell({
     );
   }
 
+  const display = value != null && value !== "" ? String(value) : "";
+
   return (
-    <div onClick={startEdit} style={{ cursor: canEdit ? "pointer" : "default" }} title={value || undefined}>
+    <div onClick={startEdit} style={{ cursor: canEdit ? "pointer" : "default" }} title={display || undefined}>
       {renderValue ? (
         renderValue(value)
-      ) : value ? (
-        <span style={{ color: C.g700 }}>{value}</span>
+      ) : display ? (
+        <span style={{ color: C.g700 }}>{display}</span>
       ) : canEdit ? (
         <span style={{ color: C.blue, fontWeight: 500 }}>{placeholder}</span>
       ) : (

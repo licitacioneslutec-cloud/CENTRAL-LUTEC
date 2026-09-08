@@ -251,13 +251,9 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                             canEdit={canEdit}
                             onSave={(v) => onUpdate(row.id, k, v)}
                             placeholder="Click para agregar"
-                            renderValue={
-                              canEdit
-                                ? undefined
-                                : (v) => (
-                                    <span style={{ color: k === "folio" ? C.navy : C.g700, fontWeight: k === "folio" ? 600 : 400 }}>{v || "—"}</span>
-                                  )
-                            }
+                            renderValue={(v) => (
+                              <span style={{ color: k === "folio" ? C.navy : C.g700, fontWeight: k === "folio" ? 600 : 400 }}>{v != null && v !== "" ? String(v) : "—"}</span>
+                            )}
                           />
                         </td>
                       );
@@ -316,7 +312,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                                   renderValue={
                                     f.key === "estado"
                                       ? (v) => <Badge estado={v} />
-                                      : (v) => <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(v) : v || "—"}</span>
+                                      : (v) => <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(v) : (v != null && v !== "" ? String(v) : "—")}</span>
                                   }
                                   placeholder="Click para editar"
                                 />
