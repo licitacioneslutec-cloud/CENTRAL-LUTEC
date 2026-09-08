@@ -43,6 +43,8 @@ function canEditField(f, isCont, isCompras) {
 // ─── Facturas data table with expandable detail row ───
 export default function FacturasTable({ data, allData, role, onUpdate, onDelete, totalCount, onWarn }) {
   const [expandedRow, setExpandedRow] = useState(null);
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState(null);
   const isCont = role === "contabilidad";
   const isCompras = role === "compras";
   const rows = allData || data;
@@ -51,9 +53,33 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
   const needsReviewByCompras = (row) => Boolean(row.rtaContabilidad) && row.rtaContRevisada === false;
   const hasFollowUp = (row) => Boolean(row.rtaCompras) && Boolean(row.rtaContabilidad);
 
+  const toggleSort = (col) => {
+    if (sortCol === col) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortCol(null); setSortDir(null); }
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  };
+
   const handleDelete = (row) => {
     if (window.confirm(`¿Eliminar la factura folio ${row.folio || row.id}?`)) onDelete?.(row.id);
   };
+
+  const sortedData = sortCol
+    ? [...data].sort((a, b) => {
+        const f = ALL_FIELDS.find((x) => x.key === sortCol);
+        const av = a[sortCol], bv = b[sortCol];
+        let cmp;
+        if (f?.numeric) {
+          cmp = (av || 0) - (bv || 0);
+        } else {
+          cmp = String(av ?? "").localeCompare(String(bv ?? ""), "es");
+        }
+        return sortDir === "desc" ? -cmp : cmp;
+      })
+    : data;
 
   return (
     <div style={{ background: C.white, border: `1px solid ${C.g200}`, borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,.04)" }}>
@@ -65,8 +91,8 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
               {mainCols.map((k) => {
                 const f = ALL_FIELDS.find((x) => x.key === k);
                 return (
-                  <th key={k} style={{ ...th, textAlign: f?.numeric ? "right" : "left" }}>
-                    {f?.label}
+                  <th key={k} onClick={() => toggleSort(k)} style={{ ...th, textAlign: f?.numeric ? "right" : "left", cursor: "pointer", userSelect: "none" }}>
+                    {f?.label} {sortCol === k ? (sortDir === "asc" ? "▲" : "▼") : ""}
                   </th>
                 );
               })}
@@ -74,7 +100,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
             </tr>
           </thead>
           <tbody>
-            {data.flatMap((row) => {
+            {sortedData.flatMap((row) => {
               const isExpanded = expandedRow === row.id;
               const flagged = needsReview(row);
               const flaggedForCompras = needsReviewByCompras(row);
@@ -183,7 +209,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
 
                       if (k === "valorContabilizado") {
                         const val = row.valorContabilizado;
-                        const mismatch = Boolean(val) && val !== row.total;
+                        const mismatch = Boolean(val) && Math.abs(val - (row.total || 0)) > 1000;
                         const diff = mismatch ? val - (row.total || 0) : 0;
                         return (
                           <td
