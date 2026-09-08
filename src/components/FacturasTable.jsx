@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useState } from "react";
 import { ALL_FIELDS, C, ESTADOS } from "../constants";
 import { fmt, parseNum } from "../utils";
 import Badge from "./Badge";
@@ -74,13 +74,12 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => {
+            {data.flatMap((row) => {
               const isExpanded = expandedRow === row.id;
               const flagged = needsReview(row);
               const flaggedForCompras = needsReviewByCompras(row);
-              return (
-                <Fragment key={row.id}>
-                  <tr
+              const trs = [
+                <tr key={row.id}
                     style={{
                       borderBottom: `1px solid ${C.g100}`,
                       borderLeft: flaggedForCompras ? `3px solid ${C.blue}` : hasFollowUp(row) ? `3px solid ${C.blue}` : flagged ? `3px solid ${C.green}` : "3px solid transparent",
@@ -287,83 +286,84 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                         </button>
                       )}
                     </td>
-                  </tr>
-
-                  {isExpanded && (
-                    <tr style={{ background: C.off }}>
-                      <td colSpan={mainCols.length + 2} style={{ padding: "12px 20px 16px 44px" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.accent, textTransform: "uppercase", marginBottom: 8 }}>
-                          Detalle completo
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                          {ALL_FIELDS.map((f) => {
-                            const canEditDetail = canEditField(f, isCont, isCompras);
-                            return (
-                              <div key={f.key} style={{ fontSize: 11 }}>
-                                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
-                                  {f.label}:{" "}
-                                </span>
-                                <EditableCell
-                                  value={row[f.key]}
-                                  type={f.type === "select" ? "select" : "text"}
-                                  options={f.type === "select" ? ESTADOS : []}
-                                  canEdit={canEditDetail}
-                                  onSave={(v) => onUpdate(row.id, f.key, f.numeric ? parseNum(v) : v)}
-                                  renderValue={
-                                    f.key === "estado"
-                                      ? (v) => <Badge estado={v} />
-                                      : (v) => <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(v) : (v != null && v !== "" ? String(v) : "—")}</span>
-                                  }
-                                  placeholder="Click para editar"
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
+                  </tr>,
+              ];
+              if (isExpanded) {
+                trs.push(
+                  <tr key={`${row.id}-detail`} style={{ background: C.off }}>
+                    <td colSpan={mainCols.length + 2} style={{ padding: "12px 20px 16px 44px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.accent, textTransform: "uppercase", marginBottom: 8 }}>
+                        Detalle completo
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                        {ALL_FIELDS.map((f) => {
+                          const canEditDetail = canEditField(f, isCont, isCompras);
+                          return (
+                            <div key={f.key} style={{ fontSize: 11 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                                {f.label}:{" "}
+                              </span>
+                              <EditableCell
+                                value={row[f.key]}
+                                type={f.type === "select" ? "select" : "text"}
+                                options={f.type === "select" ? ESTADOS : []}
+                                canEdit={canEditDetail}
+                                onSave={(v) => onUpdate(row.id, f.key, f.numeric ? parseNum(v) : v)}
+                                renderValue={
+                                  f.key === "estado"
+                                    ? (v) => <Badge estado={v} />
+                                    : (v) => <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(v) : (v != null && v !== "" ? String(v) : "—")}</span>
+                                }
+                                placeholder="Click para editar"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 11 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                          CUFE Completo:{" "}
+                        </span>
+                        <span style={{ color: C.g700, fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{row.cufe}</span>
+                      </div>
+                      {row.lastEditedByCont && (
                         <div style={{ marginTop: 8, fontSize: 11 }}>
                           <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
-                            CUFE Completo:{" "}
+                            Última edición contabilidad:{" "}
                           </span>
-                          <span style={{ color: C.g700, fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{row.cufe}</span>
+                          <span style={{ color: C.g700 }}>
+                            {row.lastEditedByCont}
+                            {row.lastEditedAtCont && ` — ${new Date(row.lastEditedAtCont).toLocaleString("es-CO")}`}
+                          </span>
                         </div>
-                        {row.lastEditedByCont && (
-                          <div style={{ marginTop: 8, fontSize: 11 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
-                              Última edición contabilidad:{" "}
-                            </span>
-                            <span style={{ color: C.g700 }}>
-                              {row.lastEditedByCont}
-                              {row.lastEditedAtCont && ` — ${new Date(row.lastEditedAtCont).toLocaleString("es-CO")}`}
-                            </span>
-                          </div>
-                        )}
-                        {row.lastEditedByCompras && (
-                          <div style={{ marginTop: 4, fontSize: 11 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
-                              Última edición compras:{" "}
-                            </span>
-                            <span style={{ color: C.g700 }}>
-                              {row.lastEditedByCompras}
-                              {row.lastEditedAtCompras && ` — ${new Date(row.lastEditedAtCompras).toLocaleString("es-CO")}`}
-                            </span>
-                          </div>
-                        )}
-                        {!row.lastEditedByCont && !row.lastEditedByCompras && row.lastEditedBy && (
-                          <div style={{ marginTop: 8, fontSize: 11 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
-                              Última edición:{" "}
-                            </span>
-                            <span style={{ color: C.g700 }}>
-                              {row.lastEditedBy}
-                              {row.lastEditedAt && ` — ${new Date(row.lastEditedAt).toLocaleString("es-CO")}`}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
+                      )}
+                      {row.lastEditedByCompras && (
+                        <div style={{ marginTop: 4, fontSize: 11 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                            Última edición compras:{" "}
+                          </span>
+                          <span style={{ color: C.g700 }}>
+                            {row.lastEditedByCompras}
+                            {row.lastEditedAtCompras && ` — ${new Date(row.lastEditedAtCompras).toLocaleString("es-CO")}`}
+                          </span>
+                        </div>
+                      )}
+                      {!row.lastEditedByCont && !row.lastEditedByCompras && row.lastEditedBy && (
+                        <div style={{ marginTop: 8, fontSize: 11 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                            Última edición:{" "}
+                          </span>
+                          <span style={{ color: C.g700 }}>
+                            {row.lastEditedBy}
+                            {row.lastEditedAt && ` — ${new Date(row.lastEditedAt).toLocaleString("es-CO")}`}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              }
+              return trs;
             })}
             {data.length === 0 && (
               <tr>
