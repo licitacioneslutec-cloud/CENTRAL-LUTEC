@@ -330,7 +330,29 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           </span>
                           <span style={{ color: C.g700, fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{row.cufe}</span>
                         </div>
-                        {row.lastEditedBy && (
+                        {row.lastEditedByCont && (
+                          <div style={{ marginTop: 8, fontSize: 11 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                              Última edición contabilidad:{" "}
+                            </span>
+                            <span style={{ color: C.g700 }}>
+                              {row.lastEditedByCont}
+                              {row.lastEditedAtCont && ` — ${new Date(row.lastEditedAtCont).toLocaleString("es-CO")}`}
+                            </span>
+                          </div>
+                        )}
+                        {row.lastEditedByCompras && (
+                          <div style={{ marginTop: 4, fontSize: 11 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
+                              Última edición compras:{" "}
+                            </span>
+                            <span style={{ color: C.g700 }}>
+                              {row.lastEditedByCompras}
+                              {row.lastEditedAtCompras && ` — ${new Date(row.lastEditedAtCompras).toLocaleString("es-CO")}`}
+                            </span>
+                          </div>
+                        )}
+                        {!row.lastEditedByCont && !row.lastEditedByCompras && row.lastEditedBy && (
                           <div style={{ marginTop: 8, fontSize: 11 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase" }}>
                               Última edición:{" "}
