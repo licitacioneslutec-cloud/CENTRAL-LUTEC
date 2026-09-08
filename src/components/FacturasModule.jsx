@@ -261,7 +261,7 @@ export default function FacturasModule({ user, role, onBack }) {
             data={filtered}
             allData={data}
             role={role}
-            onUpdate={(id, key, value) => updateField(id, key, value, user.name)}
+            onUpdate={(id, key, value) => updateField(id, key, value, user.name, role)}
             onDelete={handleDeleteRow}
             totalCount={data.length}
             onWarn={showToast}
