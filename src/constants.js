@@ -36,7 +36,7 @@ export const SAMPLE_FACTURAS = [
 ];
 
 // ─── Estados (extensible list, not enum) ───
-export const ESTADOS = ["CONTABILIZADO", "PENDIENTE", "RECHAZADO", "NO RADICADA"];
+export const ESTADOS = ["CONTABILIZADO", "PENDIENTE", "RECHAZADO", "NO RADICADA", "ANULADO"];
 
 // ─── Column definitions ───
 export const ALL_FIELDS = [

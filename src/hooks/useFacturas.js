@@ -51,6 +51,7 @@ export function useFacturas() {
         fields[`lastEditedBy${suffix}`] = username;
         fields[`lastEditedAt${suffix}`] = fields.lastEditedAt;
       }
+      if (key === "estado") fields.estadoModifiedAt = new Date().toISOString();
       if (key === "rtaCompras" && value) fields.rtaRevisada = false;
       if (key === "rtaContabilidad" && value) {
         fields.rtaRevisada = true;

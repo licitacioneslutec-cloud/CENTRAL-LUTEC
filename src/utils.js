@@ -21,7 +21,15 @@ export function parseDateDMY(str) {
 
 // Exports an array of records to a downloadable .xlsx file.
 export function exportToExcel(data, filename) {
-  const ws = XLSX.utils.json_to_sheet(data);
+  const rows = data.map((r) => {
+    const row = { ...r };
+    if (row.estadoModifiedAt) {
+      const d = new Date(row.estadoModifiedAt);
+      row.estadoModifiedAt = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    }
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Facturas");
   XLSX.writeFile(wb, filename);

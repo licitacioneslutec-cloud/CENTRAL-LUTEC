@@ -218,10 +218,12 @@ export default function FacturasModule({ user, role, onBack }) {
                 <button onClick={handleBackup} style={actionBtn}>
                   Descargar Respaldo
                 </button>
-                <button onClick={() => setShowDeleteAll(true)} style={{ ...actionBtn, color: C.red, borderColor: "#fecaca" }}>
-                  Borrar Todo
-                </button>
               </>
+            )}
+            {user.role === "admin" && (
+              <button onClick={() => setShowDeleteAll(true)} style={{ ...actionBtn, color: C.red, borderColor: "#fecaca" }}>
+                Borrar Todo
+              </button>
             )}
           </div>
         </div>

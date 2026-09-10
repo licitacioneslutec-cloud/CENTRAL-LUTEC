@@ -10,9 +10,7 @@ export function useFilters(data) {
 
   const filtered = useMemo(() => {
     let d = data;
-    if (filtroEstado === "SIN RESPUESTA") {
-      d = d.filter((r) => !r.rtaCompras);
-    } else if (filtroEstado === "SIN ESTADO") {
+    if (filtroEstado === "SIN ESTADO") {
       d = d.filter((r) => !r.estado);
     } else if (filtroEstado === "PENDIENTE REVISIÓN") {
       d = d.filter((r) => r.rtaCompras && r.rtaRevisada === false);
@@ -49,7 +47,7 @@ export function useFilters(data) {
       rechazado: data.filter((r) => r.estado === "RECHAZADO").length,
       noRadicada: data.filter((r) => r.estado === "NO RADICADA").length,
       sinEstado: data.filter((r) => !r.estado).length,
-      sinRta: data.filter((r) => !r.rtaCompras).length,
+      anulado: data.filter((r) => r.estado === "ANULADO").length,
       pendienteRevision: data.filter((r) => r.rtaCompras && r.rtaRevisada === false).length,
       totalVal: data.reduce((s, r) => s + (r.total || 0), 0),
     }),
