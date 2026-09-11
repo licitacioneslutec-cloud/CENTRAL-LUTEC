@@ -41,7 +41,7 @@ function canEditField(f, isCont, isCompras) {
 }
 
 // ─── Facturas data table with expandable detail row ───
-export default function FacturasTable({ data, allData, role, onUpdate, onDelete, totalCount, onWarn }) {
+export default function FacturasTable({ data, allData, role, onUpdate, onDelete, totalCount, onWarn, predefinedResponses, erpPrefixes }) {
   const [expandedRow, setExpandedRow] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState(null);
@@ -150,7 +150,8 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           <td key={k} style={{ padding: "8px", maxWidth: 160, fontSize: 11 }}>
                             <EditableCell
                               value={row.observacion}
-                              type="text"
+                              type="combo"
+                              options={predefinedResponses?.observacion || []}
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "observacion", v)}
                               placeholder="Click para agregar"
@@ -164,7 +165,8 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           <td key={k} style={{ padding: "8px", maxWidth: 180, fontSize: 11 }}>
                             <EditableCell
                               value={row.rtaCompras}
-                              type="text"
+                              type="combo"
+                              options={predefinedResponses?.rtaCompras || []}
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaCompras", v)}
                               placeholder="Click para responder"
@@ -178,7 +180,8 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           <td key={k} style={{ padding: "8px", maxWidth: 180, fontSize: 11 }}>
                             <EditableCell
                               value={row.rtaContabilidad}
-                              type="text"
+                              type="combo"
+                              options={predefinedResponses?.rtaContabilidad || []}
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaContabilidad", v)}
                               placeholder="Click para responder"
@@ -188,16 +191,22 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                       }
 
                       if (k === "nERP") {
-                        const isDup = row.nERP && rows.some((r) => r.id !== row.id && r.nERP === row.nERP);
+                        const isDup = row.nERP && rows.some((r) => r.id !== row.id && String(r.nERP).trim() === String(row.nERP).trim());
                         return (
-                          <td key={k} style={{ padding: "8px", background: isDup ? C.redL : undefined }} title={isDup ? "N° ERP duplicado" : undefined}>
+                          <td key={k} style={{ padding: "8px", background: isDup ? C.redL : undefined, border: isDup ? `2px solid ${C.red}` : undefined, borderRadius: isDup ? 4 : undefined }} title={isDup ? "N° ERP duplicado" : undefined}>
+                            {isDup && (
+                              <div style={{ fontSize: 9, fontWeight: 700, color: C.red, display: "flex", alignItems: "center", gap: 3, marginBottom: 2 }}>
+                                <span>⚠</span> DUPLICADO
+                              </div>
+                            )}
                             <EditableCell
                               value={row.nERP}
-                              type="text"
+                              type="prefixed"
+                              prefixes={erpPrefixes || []}
                               canEdit={canEdit}
                               onSave={(v) => {
                                 onUpdate(row.id, "nERP", v);
-                                if (v && rows.some((r) => r.id !== row.id && r.nERP === v)) {
+                                if (v && rows.some((r) => r.id !== row.id && String(r.nERP).trim() === String(v).trim())) {
                                   onWarn?.(`N° ERP "${v}" ya existe en otra factura.`);
                                 }
                               }}
@@ -331,8 +340,9 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                               </span>
                               <EditableCell
                                 value={row[f.key]}
-                                type={f.type === "select" ? "select" : "text"}
-                                options={f.type === "select" ? ESTADOS : []}
+                                type={f.key === "nERP" ? "prefixed" : f.type}
+                                options={f.type === "select" ? ESTADOS : f.type === "combo" ? predefinedResponses?.[f.key] || [] : []}
+                                prefixes={f.key === "nERP" ? erpPrefixes || [] : []}
                                 canEdit={canEditDetail}
                                 onSave={(v) => onUpdate(row.id, f.key, f.numeric ? parseNum(v) : v)}
                                 renderValue={
