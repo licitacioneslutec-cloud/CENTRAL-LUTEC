@@ -58,9 +58,9 @@ export const ALL_FIELDS = [
   { key: "estadoDoc", label: "Estado Doc.", w: 110, type: "text" },
   { key: "grupo", label: "Grupo", w: 80, type: "text" },
   { key: "estado", label: "Estado Contab.", w: 120, editable: "contabilidad", type: "select" },
-  { key: "observacion", label: "Observación Contab.", w: 160, editable: "contabilidad", type: "text" },
-  { key: "rtaCompras", label: "Rta. Compras", w: 180, editable: "compras", type: "text" },
-  { key: "rtaContabilidad", label: "Rta. Contabilidad", w: 180, editable: "contabilidad", type: "text" },
+  { key: "observacion", label: "Observación Contab.", w: 160, editable: "contabilidad", type: "combo" },
+  { key: "rtaCompras", label: "Rta. Compras", w: 180, editable: "compras", type: "combo" },
+  { key: "rtaContabilidad", label: "Rta. Contabilidad", w: 180, editable: "contabilidad", type: "combo" },
   { key: "nERP", label: "N° ERP", w: 100, editable: "contabilidad", type: "text" },
   { key: "valorContabilizado", label: "Val. Contabilizado", w: 130, editable: "contabilidad", type: "text", numeric: true },
 ];

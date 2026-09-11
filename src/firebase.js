@@ -68,6 +68,24 @@ export async function loadEstados(db) {
   return snapshot.exists() ? snapshot.val() : [];
 }
 
+// ─── Predefined standard responses (rtaCompras, observacion, rtaContabilidad) ───
+export function subscribePredefinedResponses(db, callback) {
+  return onValue(ref(db, "config/predefinedResponses"), (snapshot) => callback(snapshot.val()));
+}
+
+export function savePredefinedResponses(db, data) {
+  return set(ref(db, "config/predefinedResponses"), data);
+}
+
+// ─── Predefined N° ERP prefixes ───
+export function subscribeErpPrefixes(db, callback) {
+  return onValue(ref(db, "config/erpPrefixes"), (snapshot) => callback(snapshot.val()));
+}
+
+export function saveErpPrefixes(db, data) {
+  return set(ref(db, "config/erpPrefixes"), data);
+}
+
 // ─── User management ───
 export function subscribeUsers(db, callback) {
   return onValue(ref(db, "users"), (snapshot) => callback(snapshot.val()));

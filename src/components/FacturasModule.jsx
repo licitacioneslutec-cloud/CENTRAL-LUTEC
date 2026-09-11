@@ -3,6 +3,14 @@ import { C } from "../constants";
 import { useFilters } from "../hooks/useFilters";
 import { useFacturas } from "../hooks/useFacturas";
 import { exportToExcel } from "../utils";
+import {
+  isFirebaseConfigured,
+  initFirebase,
+  subscribePredefinedResponses,
+  savePredefinedResponses,
+  subscribeErpPrefixes,
+  saveErpPrefixes,
+} from "../firebase";
 import SearchBar from "./SearchBar";
 import FilterChips from "./FilterChips";
 import StatsBar from "./StatsBar";
@@ -53,8 +61,64 @@ export default function FacturasModule({ user, role, onBack }) {
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
   const [bellOpen, setBellOpen] = useState(false);
   const notifiedRef = useRef(false);
+  const configuredFb = isFirebaseConfigured();
+  const configDbRef = useRef(null);
+
+  const [predefinedResponses, setPredefinedResponses] = useState(null);
+  const [erpPrefixes, setErpPrefixes] = useState(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [configDraft, setConfigDraft] = useState(null);
+  const [newOptionText, setNewOptionText] = useState({});
 
   const { data, loading, updateField, addFactura, bulkAdd, deleteFactura, deleteAll } = useFacturas();
+
+  const canConfig = isCont || user.role === "admin";
+
+  useEffect(() => {
+    if (!configuredFb) return;
+    if (!configDbRef.current) configDbRef.current = initFirebase();
+    const unsub1 = subscribePredefinedResponses(configDbRef.current, (v) => setPredefinedResponses(v || {}));
+    const unsub2 = subscribeErpPrefixes(configDbRef.current, (v) => setErpPrefixes(v || []));
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [configuredFb]);
+
+  const openConfig = () => {
+    setConfigDraft({
+      observacion: [...(predefinedResponses?.observacion || [])],
+      rtaCompras: [...(predefinedResponses?.rtaCompras || [])],
+      rtaContabilidad: [...(predefinedResponses?.rtaContabilidad || [])],
+      erpPrefixes: [...(erpPrefixes || [])],
+    });
+    setNewOptionText({});
+    setShowConfig(true);
+  };
+
+  const addConfigOption = (field) => {
+    const text = (newOptionText[field] || "").trim();
+    if (!text) return;
+    setConfigDraft((prev) => ({ ...prev, [field]: [...prev[field], text] }));
+    setNewOptionText((prev) => ({ ...prev, [field]: "" }));
+  };
+
+  const removeConfigOption = (field, idx) => {
+    setConfigDraft((prev) => ({ ...prev, [field]: prev[field].filter((_, i) => i !== idx) }));
+  };
+
+  const saveConfig = () => {
+    const { erpPrefixes: prefixes, ...responses } = configDraft;
+    if (configuredFb && configDbRef.current) {
+      savePredefinedResponses(configDbRef.current, responses);
+      saveErpPrefixes(configDbRef.current, prefixes);
+    } else {
+      setPredefinedResponses(responses);
+      setErpPrefixes(prefixes);
+    }
+    setShowConfig(false);
+    showToast("Configuración guardada.");
+  };
 
   const showToast = (message) => {
     setToast(message);
@@ -225,6 +289,11 @@ export default function FacturasModule({ user, role, onBack }) {
                 Borrar Todo
               </button>
             )}
+            {canConfig && (
+              <button onClick={openConfig} style={actionBtn}>
+                ⚙ Respuestas
+              </button>
+            )}
           </div>
         </div>
 
@@ -267,6 +336,8 @@ export default function FacturasModule({ user, role, onBack }) {
             onDelete={handleDeleteRow}
             totalCount={data.length}
             onWarn={showToast}
+            predefinedResponses={predefinedResponses}
+            erpPrefixes={erpPrefixes}
           />
         )}
       </div>
@@ -337,6 +408,80 @@ export default function FacturasModule({ user, role, onBack }) {
                   setShowDeleteAll(false);
                   setDeleteAllConfirm("");
                 }}
+                style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, fontWeight: 600, padding: "7px 16px", borderRadius: 4, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfig && configDraft && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+        >
+          <div style={{ background: C.white, borderRadius: 8, padding: 24, maxWidth: 480, width: "90%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.2)" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 14 }}>Configurar respuestas y prefijos predefinidos</div>
+
+            {[
+              { key: "observacion", label: "Observación Contab." },
+              { key: "rtaCompras", label: "Rta. Compras" },
+              { key: "rtaContabilidad", label: "Rta. Contabilidad" },
+              { key: "erpPrefixes", label: "Prefijos N° ERP" },
+            ].map(({ key, label }) => (
+              <div key={key} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: C.g500, textTransform: "uppercase", marginBottom: 6 }}>
+                  {label}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                  {configDraft[key].length === 0 && (
+                    <span style={{ fontSize: 11, color: C.g300 }}>Sin opciones definidas</span>
+                  )}
+                  {configDraft[key].map((opt, idx) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.off, borderRadius: 4, padding: "4px 8px" }}>
+                      <span style={{ fontSize: 12, color: C.g700 }}>{opt}</span>
+                      <button
+                        onClick={() => removeConfigOption(key, idx)}
+                        style={{ background: "none", color: C.red, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: "0 4px" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    value={newOptionText[key] || ""}
+                    onChange={(e) => setNewOptionText((prev) => ({ ...prev, [key]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === "Enter") addConfigOption(key); }}
+                    placeholder="Nueva opción..."
+                    style={{ flex: 1, fontSize: 12, padding: "6px 8px", border: `1px solid ${C.g200}`, borderRadius: 4 }}
+                  />
+                  <button onClick={() => addConfigOption(key)} style={{ ...actionBtn, padding: "6px 10px" }}>
+                    Agregar
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button
+                onClick={saveConfig}
+                style={{ background: C.accent, color: C.white, border: "none", fontSize: 11, fontWeight: 700, padding: "7px 16px", borderRadius: 4, cursor: "pointer" }}
+              >
+                Guardar
+              </button>
+              <button
+                onClick={() => setShowConfig(false)}
                 style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, fontWeight: 600, padding: "7px 16px", borderRadius: 4, cursor: "pointer" }}
               >
                 Cancelar

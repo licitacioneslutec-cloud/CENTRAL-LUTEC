@@ -22,7 +22,7 @@ export function useFilters(data) {
       const has = (v) => v != null && String(v).toLowerCase().includes(s);
       d = d.filter(
         (r) =>
-          has(r.folio) || has(r.nombreEmisor) || has(r.cufe) || has(r.rtaCompras) || has(r.nitEmisor)
+          has(r.folio) || has(r.nombreEmisor) || has(r.cufe) || has(r.rtaCompras) || has(r.nitEmisor) || has(r.nERP)
       );
     }
     if (fechaDesde || fechaHasta) {
