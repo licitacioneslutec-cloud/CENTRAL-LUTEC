@@ -7,6 +7,10 @@ export default function Badge({ estado }) {
     PENDIENTE: { bg: C.orangeL, c: C.orange, b: "#fde68a" },
     RECHAZADO: { bg: C.redL, c: C.red, b: "#fecaca" },
     "NO RADICADA": { bg: C.blueL, c: C.blue, b: "#bfdbfe" },
+    "EN CARGUE": { bg: C.g100, c: C.g500, b: C.g200 },
+    NOVEDAD: { bg: C.blueL, c: C.blue, b: "#bfdbfe" },
+    SOLUCIONADO: { bg: C.greenL, c: C.green, b: "#bbf7d0" },
+    "N/A COMPRAS": { bg: C.orangeL, c: C.orange, b: "#fde68a" },
   };
   const s = m[estado] || { bg: C.g100, c: C.g500, b: C.g200 };
   return (

@@ -79,13 +79,14 @@ export default function EditableCell({
   if (canEdit && editing) {
     let control;
     if (type === "select") {
-      control = (
+      return (
         <select
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={(e) => { onSave(e.target.value); setEditing(false); }}
+          onBlur={cancel}
+          onKeyDown={(e) => { if (e.key === "Escape") cancel(); }}
           autoFocus
-          style={{ fontSize: 11, padding: "2px 4px", border: `1px solid ${C.g200}`, borderRadius: 3 }}
+          style={{ fontSize: 11, padding: "2px 4px", border: `1px solid ${C.g200}`, borderRadius: 3, maxWidth: "100%" }}
         >
           <option value="">Sin estado</option>
           {options.map((o) => (
@@ -96,12 +97,18 @@ export default function EditableCell({
         </select>
       );
     } else if (type === "combo" && !customMode && options.length > 0) {
-      control = (
+      return (
         <select
           value=""
-          onChange={(e) => comboSelect(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value === CUSTOM) { setCustomMode(true); setDraft(""); return; }
+            onSave(e.target.value);
+            setEditing(false);
+          }}
+          onBlur={cancel}
+          onKeyDown={(e) => { if (e.key === "Escape") cancel(); }}
           autoFocus
-          style={{ fontSize: 11, padding: "2px 4px", border: `1px solid ${C.g200}`, borderRadius: 3, maxWidth: 200 }}
+          style={{ fontSize: 11, padding: "2px 4px", border: `1px solid ${C.g200}`, borderRadius: 3, maxWidth: "100%" }}
         >
           <option value="">— Seleccionar —</option>
           {options.map((o) => (
@@ -131,7 +138,7 @@ export default function EditableCell({
             value={numberPart}
             onChange={(e) => setNumberPart(e.target.value)}
             onKeyDown={handleKeyDown}
-            style={{ fontSize: 11, padding: "3px 5px", border: `1px solid ${C.g200}`, borderRadius: 3, width: 90 }}
+            style={{ fontSize: 11, padding: "3px 5px", border: `1px solid ${C.g200}`, borderRadius: 3, flex: 1, minWidth: 0 }}
           />
           {prefixes.length > 0 && (
             <button
@@ -151,7 +158,7 @@ export default function EditableCell({
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             autoFocus
-            style={{ fontSize: 11, padding: "3px 5px", border: `1px solid ${C.g200}`, borderRadius: 3, width: 140 }}
+            style={{ fontSize: 11, padding: "3px 5px", border: `1px solid ${C.g200}`, borderRadius: 3, flex: 1, minWidth: 0 }}
           />
           {prefixes.length > 0 && (
             <button
@@ -173,23 +180,23 @@ export default function EditableCell({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           autoFocus
-          style={{ fontSize: 11, padding: "3px 5px", border: `1px solid ${C.g200}`, borderRadius: 3, width: 140 }}
+          style={{ fontSize: 11, padding: "3px 5px", border: `1px solid ${C.g200}`, borderRadius: 3, flex: 1, minWidth: 0 }}
         />
       );
     }
 
     return (
-      <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 2, alignItems: "center", maxWidth: 180 }}>
         {control}
         <button
           onClick={save}
-          style={{ background: C.accent, color: C.white, border: "none", fontSize: 11, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
+          style={{ background: C.accent, color: C.white, border: "none", fontSize: 11, padding: "2px 5px", borderRadius: 3, cursor: "pointer", flexShrink: 0 }}
         >
           ✓
         </button>
         <button
           onClick={cancel}
-          style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
+          style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, padding: "2px 5px", borderRadius: 3, cursor: "pointer", flexShrink: 0 }}
         >
           ✕
         </button>
