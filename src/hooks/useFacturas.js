@@ -9,7 +9,7 @@ import {
   removeAllFacturas,
   toSafeKey,
 } from "../firebase";
-import { SAMPLE_FACTURAS } from "../constants";
+import { SAMPLE_FACTURAS, ESTADOS_COMPRAS_ALERTA } from "../constants";
 
 // Converts Firebase's {cufeHash: factura} object into an array, using the hash as `id`.
 function toArray(fbData) {
@@ -52,6 +52,9 @@ export function useFacturas() {
         fields[`lastEditedAt${suffix}`] = fields.lastEditedAt;
       }
       if (key === "estado") fields.estadoModifiedAt = new Date().toISOString();
+      if (key === "estadoCompras") {
+        fields.estadoComprasRevisado = !ESTADOS_COMPRAS_ALERTA.includes(value);
+      }
       if (key === "rtaCompras" && value) fields.rtaRevisada = false;
       if (key === "rtaContabilidad" && value) {
         fields.rtaRevisada = true;

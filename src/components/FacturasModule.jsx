@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { C } from "../constants";
+import { C, ESTADOS_COMPRAS_ALERTA } from "../constants";
 import { useFilters } from "../hooks/useFilters";
 import { useFacturas } from "../hooks/useFacturas";
 import { exportToExcel } from "../utils";
@@ -158,7 +158,7 @@ export default function FacturasModule({ user, role, onBack }) {
   };
 
   const pendingCount = loading ? 0 : isCont
-    ? data.filter((r) => r.rtaCompras && r.rtaRevisada === false).length
+    ? data.filter((r) => (r.rtaCompras && r.rtaRevisada === false) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length
     : data.filter((r) => r.rtaContabilidad && r.rtaContRevisada === false).length;
 
   useEffect(() => {
@@ -251,7 +251,7 @@ export default function FacturasModule({ user, role, onBack }) {
               }}>
                 {pendingCount > 0 ? (
                   <div style={{ fontSize: 12, color: C.g700 }}>
-                    <strong style={{ color: C.navy }}>{pendingCount}</strong> respuesta{pendingCount === 1 ? "" : "s"} de{" "}
+                    <strong style={{ color: C.navy }}>{pendingCount}</strong> alerta{pendingCount === 1 ? "" : "s"} de{" "}
                     <strong>{isCont ? "compras" : "contabilidad"}</strong> pendiente{pendingCount === 1 ? "" : "s"} de revisar.
                   </div>
                 ) : (

@@ -37,6 +37,8 @@ export const SAMPLE_FACTURAS = [
 
 // ─── Estados (extensible list, not enum) ───
 export const ESTADOS = ["CONTABILIZADO", "PENDIENTE", "RECHAZADO", "NO RADICADA", "ANULADO"];
+export const ESTADOS_COMPRAS = ["EN CARGUE", "NOVEDAD", "RECHAZADO", "SOLUCIONADO", "N/A COMPRAS"];
+export const ESTADOS_COMPRAS_ALERTA = ["RECHAZADO", "SOLUCIONADO", "N/A COMPRAS"];
 
 // ─── Column definitions ───
 export const ALL_FIELDS = [
@@ -61,6 +63,8 @@ export const ALL_FIELDS = [
   { key: "observacion", label: "Observación Contab.", w: 160, editable: "contabilidad", type: "combo" },
   { key: "rtaCompras", label: "Rta. Compras", w: 180, editable: "compras", type: "combo" },
   { key: "rtaContabilidad", label: "Rta. Contabilidad", w: 180, editable: "contabilidad", type: "combo" },
+  { key: "estadoCompras", label: "Estado Compras", w: 130, editable: "compras", type: "select" },
+  { key: "especificacion", label: "Especificación", w: 160, editable: "contabilidad", type: "text" },
   { key: "nERP", label: "N° ERP", w: 100, editable: "contabilidad", type: "text" },
   { key: "valorContabilizado", label: "Val. Contabilizado", w: 130, editable: "contabilidad", type: "text", numeric: true },
 ];

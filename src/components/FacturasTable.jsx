@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ALL_FIELDS, C, ESTADOS } from "../constants";
+import { ALL_FIELDS, C, ESTADOS, ESTADOS_COMPRAS, ESTADOS_COMPRAS_ALERTA } from "../constants";
 import { fmt, parseNum } from "../utils";
 import Badge from "./Badge";
 import EditableCell from "./EditableCell";
@@ -17,6 +17,8 @@ const mainCols = [
   "valorContabilizado",
   "estado",
   "observacion",
+  "especificacion",
+  "estadoCompras",
   "rtaCompras",
   "rtaContabilidad",
 ];
@@ -52,6 +54,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
   const needsReview = (row) => Boolean(row.rtaCompras) && row.rtaRevisada === false;
   const needsReviewByCompras = (row) => Boolean(row.rtaContabilidad) && row.rtaContRevisada === false;
   const hasFollowUp = (row) => Boolean(row.rtaCompras) && Boolean(row.rtaContabilidad);
+  const needsEstadoComprasReview = (row) => ESTADOS_COMPRAS_ALERTA.includes(row.estadoCompras) && row.estadoComprasRevisado === false;
 
   const toggleSort = (col) => {
     if (sortCol === col) {
@@ -104,18 +107,22 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
               const isExpanded = expandedRow === row.id;
               const flagged = needsReview(row);
               const flaggedForCompras = needsReviewByCompras(row);
+              const flaggedEstadoCompras = needsEstadoComprasReview(row);
+              const hasHighlight = flaggedForCompras || hasFollowUp(row) || flagged || flaggedEstadoCompras;
+              const rowBg = flaggedForCompras ? C.blueL : hasFollowUp(row) ? C.blueL : flaggedEstadoCompras ? C.orangeL : flagged ? C.greenL : "transparent";
+              const rowBorder = flaggedForCompras ? `3px solid ${C.blue}` : hasFollowUp(row) ? `3px solid ${C.blue}` : flaggedEstadoCompras ? `3px solid ${C.orange}` : flagged ? `3px solid ${C.green}` : "3px solid transparent";
               const trs = [
                 <tr key={row.id}
                     style={{
                       borderBottom: `1px solid ${C.g100}`,
-                      borderLeft: flaggedForCompras ? `3px solid ${C.blue}` : hasFollowUp(row) ? `3px solid ${C.blue}` : flagged ? `3px solid ${C.green}` : "3px solid transparent",
-                      background: flaggedForCompras ? C.blueL : hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent",
+                      borderLeft: rowBorder,
+                      background: rowBg,
                     }}
                     onMouseEnter={(e) => {
-                      if (!flaggedForCompras && !hasFollowUp(row) && !flagged) e.currentTarget.style.background = C.off;
+                      if (!hasHighlight) e.currentTarget.style.background = C.off;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = flaggedForCompras ? C.blueL : hasFollowUp(row) ? C.blueL : flagged ? C.greenL : "transparent";
+                      e.currentTarget.style.background = rowBg;
                     }}
                   >
                     <td style={{ padding: "8px", textAlign: "center" }}>
@@ -185,6 +192,35 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaContabilidad", v)}
                               placeholder="Click para responder"
+                            />
+                          </td>
+                        );
+                      }
+
+                      if (k === "estadoCompras") {
+                        return (
+                          <td key={k} style={{ padding: "8px" }}>
+                            <EditableCell
+                              value={row.estadoCompras}
+                              type="select"
+                              options={ESTADOS_COMPRAS}
+                              canEdit={canEdit}
+                              onSave={(v) => onUpdate(row.id, "estadoCompras", v)}
+                              renderValue={(v) => <Badge estado={v} />}
+                            />
+                          </td>
+                        );
+                      }
+
+                      if (k === "especificacion") {
+                        return (
+                          <td key={k} style={{ padding: "8px", maxWidth: 160, fontSize: 11 }}>
+                            <EditableCell
+                              value={row.especificacion}
+                              type="text"
+                              canEdit={canEdit}
+                              onSave={(v) => onUpdate(row.id, "especificacion", v)}
+                              placeholder="Click para agregar"
                             />
                           </td>
                         );
@@ -296,8 +332,17 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                       {isCont && flagged && (
                         <button
                           onClick={() => onUpdate(row.id, "rtaRevisada", true)}
-                          title="Marcar revisado"
+                          title="Marcar rta. revisada"
                           style={{ background: C.green, color: C.white, border: "none", fontSize: 11, padding: "3px 6px", borderRadius: 3, cursor: "pointer", marginRight: 4 }}
+                        >
+                          ✓
+                        </button>
+                      )}
+                      {isCont && needsEstadoComprasReview(row) && (
+                        <button
+                          onClick={() => onUpdate(row.id, "estadoComprasRevisado", true)}
+                          title="Marcar estado compras revisado"
+                          style={{ background: C.orange, color: C.white, border: "none", fontSize: 11, padding: "3px 6px", borderRadius: 3, cursor: "pointer", marginRight: 4 }}
                         >
                           ✓
                         </button>
@@ -341,12 +386,12 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                               <EditableCell
                                 value={row[f.key]}
                                 type={f.key === "nERP" ? "prefixed" : f.type}
-                                options={f.type === "select" ? ESTADOS : f.type === "combo" ? predefinedResponses?.[f.key] || [] : []}
+                                options={f.key === "estadoCompras" ? ESTADOS_COMPRAS : f.type === "select" ? ESTADOS : f.type === "combo" ? predefinedResponses?.[f.key] || [] : []}
                                 prefixes={f.key === "nERP" ? erpPrefixes || [] : []}
                                 canEdit={canEditDetail}
                                 onSave={(v) => onUpdate(row.id, f.key, f.numeric ? parseNum(v) : v)}
                                 renderValue={
-                                  f.key === "estado"
+                                  f.key === "estado" || f.key === "estadoCompras"
                                     ? (v) => <Badge estado={v} />
                                     : (v) => <span style={{ color: C.g700, wordBreak: "break-all" }}>{f.numeric ? fmt(v) : (v != null && v !== "" ? String(v) : "—")}</span>
                                 }
