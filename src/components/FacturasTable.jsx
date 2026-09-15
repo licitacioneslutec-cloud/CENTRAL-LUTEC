@@ -157,7 +157,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           <td key={k} style={{ padding: "8px", maxWidth: 160, fontSize: 11 }}>
                             <EditableCell
                               value={row.observacion}
-                              type="combo"
+                              type="select"
                               options={predefinedResponses?.observacion || []}
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "observacion", v)}
@@ -187,8 +187,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           <td key={k} style={{ padding: "8px", maxWidth: 180, fontSize: 11 }}>
                             <EditableCell
                               value={row.rtaContabilidad}
-                              type="combo"
-                              options={predefinedResponses?.rtaContabilidad || []}
+                              type="text"
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaContabilidad", v)}
                               placeholder="Click para responder"
