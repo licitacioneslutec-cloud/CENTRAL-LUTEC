@@ -172,7 +172,7 @@ export default function FacturasTable({ data, allData, role, onUpdate, onDelete,
                           <td key={k} style={{ padding: "8px", maxWidth: 180, fontSize: 11 }}>
                             <EditableCell
                               value={row.rtaCompras}
-                              type="combo"
+                              type="select"
                               options={predefinedResponses?.rtaCompras || []}
                               canEdit={canEdit}
                               onSave={(v) => onUpdate(row.id, "rtaCompras", v)}
