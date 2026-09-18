@@ -4,7 +4,7 @@ import PasswordGate from "./PasswordGate";
 
 // ─── Portal Landing ───
 const WEBHOOK_URLS = {
-  "enviar-correos": import.meta.env.VITE_N8N_WEBHOOK_ENVIAR_CORREOS,
+  "enviar-correos": "https://licitaciones3.app.n8n.cloud/webhook/enviar-correos-monday",
 };
 
 export default function Portal({ user, onNavigate, onLogout }) {
