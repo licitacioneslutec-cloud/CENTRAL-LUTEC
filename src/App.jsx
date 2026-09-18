@@ -1,6 +1,8 @@
 import { useState, useEffect, Component } from "react";
 import Portal from "./components/Portal";
 import FacturasModule from "./components/FacturasModule";
+import DocumentosModule from "./components/DocumentosModule";
+import SoporteUpload from "./components/SoporteUpload";
 import AdminPanel from "./components/AdminPanel";
 import LoginScreen from "./components/LoginScreen";
 import { isFirebaseConfigured, initFirebase, seedAdmin } from "./firebase";
@@ -61,11 +63,17 @@ export default function App() {
     setView(target);
   };
 
+  const soporteMatch = window.location.pathname.match(/^\/soporte\/(.+)$/);
+  if (soporteMatch) return <SoporteUpload docId={soporteMatch[1]} />;
+
   if (!user) return <LoginScreen onLogin={handleLogin} />;
 
   let content;
   if (view === "admin" && user.role === "admin") {
     content = <AdminPanel user={user} onBack={() => setView("portal")} />;
+  } else if (view === "documentos") {
+    const effectiveRole = role || (user.role === "admin" ? "compras" : user.role);
+    content = <DocumentosModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;
   } else if (view === "facturas") {
     const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
     content = <FacturasModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;

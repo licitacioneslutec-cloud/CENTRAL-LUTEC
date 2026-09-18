@@ -3,8 +3,13 @@ import { DEPARTMENTS, C } from "../constants";
 import PasswordGate from "./PasswordGate";
 
 // ─── Portal Landing ───
+const WEBHOOK_URLS = {
+  "enviar-correos": import.meta.env.VITE_N8N_WEBHOOK_ENVIAR_CORREOS,
+};
+
 export default function Portal({ user, onNavigate, onLogout }) {
   const [pendingExternal, setPendingExternal] = useState(null);
+  const [webhookStatus, setWebhookStatus] = useState(null);
 
   const visibleDepts = DEPARTMENTS.map((dept) => ({
     ...dept,
@@ -72,6 +77,17 @@ export default function Portal({ user, onNavigate, onLogout }) {
                       key={mod.id + dept.id}
                       onClick={() => {
                         if (isSoon) return;
+                        if (mod.type === "webhook") {
+                          const url = WEBHOOK_URLS[mod.id];
+                          if (!url) return;
+                          if (!window.confirm("¿Enviar correos de rechazo para facturas marcadas como ENVIAR en Monday?")) return;
+                          setWebhookStatus({ id: mod.id, state: "loading" });
+                          fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+                            .then(r => { if (!r.ok) throw new Error(r.status); setWebhookStatus({ id: mod.id, state: "success" }); })
+                            .catch(() => setWebhookStatus({ id: mod.id, state: "error" }));
+                          setTimeout(() => setWebhookStatus(null), 4000);
+                          return;
+                        }
                         if (isExt) {
                           if (mod.password && !sessionStorage.getItem('auth_' + mod.id)) {
                             setPendingExternal(mod);
@@ -79,7 +95,7 @@ export default function Portal({ user, onNavigate, onLogout }) {
                           }
                           window.open(mod.url, '_blank');
                         }
-                        else onNavigate("facturas", mod.role);
+                        else onNavigate(mod.view || "facturas", mod.role);
                       }}
                       disabled={isSoon}
                       style={{
@@ -96,6 +112,10 @@ export default function Portal({ user, onNavigate, onLogout }) {
                       </div>
                       {isSoon ? (
                         <span style={{ fontSize:11, fontWeight:600, letterSpacing:1, color:C.g300, textTransform:"uppercase", padding:"4px 10px", border:`1px solid ${C.g200}`, borderRadius:3, whiteSpace:"nowrap", marginLeft:12 }}>Próximamente</span>
+                      ) : mod.type === "webhook" ? (
+                        <span style={{ background: webhookStatus?.id === mod.id && webhookStatus.state === "loading" ? C.orange : webhookStatus?.id === mod.id && webhookStatus.state === "success" ? C.green : webhookStatus?.id === mod.id && webhookStatus.state === "error" ? C.red : C.accent, color:C.white, fontSize:11, fontWeight:700, letterSpacing:.5, padding:"5px 12px", borderRadius:3, textTransform:"uppercase", whiteSpace:"nowrap", marginLeft:12 }}>
+                          {webhookStatus?.id === mod.id && webhookStatus.state === "loading" ? "Enviando..." : webhookStatus?.id === mod.id && webhookStatus.state === "success" ? "Enviado ✓" : webhookStatus?.id === mod.id && webhookStatus.state === "error" ? "Error ✗" : "Ejecutar"}
+                        </span>
                       ) : isExt ? (
                         <span style={{ fontSize:16, color:C.g300, marginLeft:12 }} title="Abre en nueva pestaña">↗</span>
                       ) : (

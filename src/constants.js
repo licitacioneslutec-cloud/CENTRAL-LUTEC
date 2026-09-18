@@ -6,6 +6,8 @@ export const DEPARTMENTS = [
       { id: "monday", name: "Actualización Monday", desc: "Sincronización y actualización de tableros Monday", type: "external", url: "https://compras-comisiones.netlify.app/importar.html", status: "activo", password: "70cdf58e67eae5886ad2e3bd5fb1b8c5bae65db772180f64cb5e9066b13f0a72" },
       { id: "estado-mensual", name: "Estado Compras Mensual", desc: "Reporte mensual del estado de compras", type: "external", url: "https://compras-comisiones.netlify.app/", status: "activo", password: "ba9cbe46d59bc71309a935f738b132fb6ee84f4add7fdecd637de502198f55a9" },
       { id: "facturas", name: "Aclaración Facturas", desc: "Responder solicitudes de aclaración de contabilidad", type: "internal", status: "activo", role: "compras" },
+      { id: "documentos", name: "Documentos Proveedor", desc: "Gestión de documentos de proveedores, soportes y rechazos", type: "internal", status: "activo", role: "compras", view: "documentos" },
+      { id: "enviar-correos", name: "Enviar Correos Rechazo", desc: "Enviar notificaciones a proveedores con facturas marcadas ENVIAR en Monday", type: "webhook", status: "activo", role: "compras" },
     ],
   },
   {
