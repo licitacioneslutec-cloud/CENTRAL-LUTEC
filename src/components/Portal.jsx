@@ -51,6 +51,12 @@ export default function Portal({ user, onNavigate, onLogout }) {
         </div>
       </header>
 
+      {webhookStatus?.msg && (
+        <div style={{ background: webhookStatus.state === "success" ? "#16a34a" : "#dc2626", color:"#fff", padding:"10px 24px", textAlign:"center", fontSize:13, fontWeight:600, transition:"all .3s" }}>
+          {webhookStatus.msg}
+        </div>
+      )}
+
       <div style={{ maxWidth:1060, margin:"0 auto", padding:"48px 24px" }}>
         <div style={{ textAlign:"center", marginBottom:40 }}>
           <div style={{ color:C.accent, fontSize:11, fontWeight:600, letterSpacing:3, textTransform:"uppercase", marginBottom:6 }}>Plataforma centralizada</div>
@@ -83,9 +89,12 @@ export default function Portal({ user, onNavigate, onLogout }) {
                           if (!window.confirm("¿Enviar correos de rechazo para facturas marcadas como ENVIAR en Monday?")) return;
                           setWebhookStatus({ id: mod.id, state: "loading" });
                           fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-                            .then(r => { if (!r.ok) throw new Error(r.status); setWebhookStatus({ id: mod.id, state: "success" }); })
-                            .catch(() => setWebhookStatus({ id: mod.id, state: "error" }));
-                          setTimeout(() => setWebhookStatus(null), 4000);
+                            .then(r => {
+                              if (!r.ok) throw new Error(r.status);
+                              setWebhookStatus({ id: mod.id, state: "success", msg: "Proceso iniciado correctamente" });
+                            })
+                            .catch(() => setWebhookStatus({ id: mod.id, state: "error", msg: "Error al conectar con n8n" }));
+                          setTimeout(() => setWebhookStatus(null), 5000);
                           return;
                         }
                         if (isExt) {
@@ -113,8 +122,8 @@ export default function Portal({ user, onNavigate, onLogout }) {
                       {isSoon ? (
                         <span style={{ fontSize:11, fontWeight:600, letterSpacing:1, color:C.g300, textTransform:"uppercase", padding:"4px 10px", border:`1px solid ${C.g200}`, borderRadius:3, whiteSpace:"nowrap", marginLeft:12 }}>Próximamente</span>
                       ) : mod.type === "webhook" ? (
-                        <span style={{ background: webhookStatus?.id === mod.id && webhookStatus.state === "loading" ? C.orange : webhookStatus?.id === mod.id && webhookStatus.state === "success" ? C.green : webhookStatus?.id === mod.id && webhookStatus.state === "error" ? C.red : C.accent, color:C.white, fontSize:11, fontWeight:700, letterSpacing:.5, padding:"5px 12px", borderRadius:3, textTransform:"uppercase", whiteSpace:"nowrap", marginLeft:12 }}>
-                          {webhookStatus?.id === mod.id && webhookStatus.state === "loading" ? "Enviando..." : webhookStatus?.id === mod.id && webhookStatus.state === "success" ? "Enviado ✓" : webhookStatus?.id === mod.id && webhookStatus.state === "error" ? "Error ✗" : "Ejecutar"}
+                        <span style={{ background: webhookStatus?.id === mod.id && webhookStatus.state === "loading" ? C.orange : webhookStatus?.id === mod.id && webhookStatus.state === "success" ? "#16a34a" : webhookStatus?.id === mod.id && webhookStatus.state === "error" ? C.red : C.accent, color:C.white, fontSize:11, fontWeight:700, letterSpacing:.5, padding:"5px 12px", borderRadius:3, whiteSpace:"nowrap", marginLeft:12 }}>
+                          {webhookStatus?.id === mod.id && webhookStatus.state === "loading" ? "Enviando..." : webhookStatus?.id === mod.id && webhookStatus.state === "success" ? "✓ Ejecutado" : webhookStatus?.id === mod.id && webhookStatus.state === "error" ? "✗ Error" : "Ejecutar"}
                         </span>
                       ) : isExt ? (
                         <span style={{ fontSize:16, color:C.g300, marginLeft:12 }} title="Abre en nueva pestaña">↗</span>
