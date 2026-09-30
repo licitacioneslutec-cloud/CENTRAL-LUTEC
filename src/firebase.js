@@ -169,13 +169,15 @@ export async function restoreFromConsolidado(db, consolidadoId, facturas, remove
   const updates = {};
   for (const [cufeKey, factura] of Object.entries(facturas)) {
     updates["facturas/" + cufeKey] = factura;
-    updates["consolidados/" + consolidadoId + "/facturas/" + cufeKey] = null;
   }
   if (removeAll) {
     updates["consolidados/" + consolidadoId] = null;
+  } else {
+    for (const cufeKey of Object.keys(facturas)) {
+      updates["consolidados/" + consolidadoId + "/facturas/" + cufeKey] = null;
+    }
   }
   await update(ref(db), updates);
-  // Update metadata counts after partial restore
   if (!removeAll) {
     const snap = await get(ref(db, "consolidados/" + consolidadoId + "/facturas"));
     const remaining = snap.exists() ? snap.val() : {};
