@@ -123,3 +123,56 @@ export async function seedAdmin(db, adminHash) {
     await set(r, { ...a, passwordHash: adminHash, createdBy: "sistema", createdAt: now });
   }
 }
+
+// ─── Consolidados (monthly archives) ───
+export function subscribeConsolidados(db, callback) {
+  return onValue(ref(db, "consolidados"), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) { callback([]); return; }
+    // Return metadata only (without facturas) for the list view
+    const list = Object.entries(val).map(([id, c]) => ({
+      id,
+      nombre: c.nombre,
+      fechaDesde: c.fechaDesde,
+      fechaHasta: c.fechaHasta,
+      creadoPor: c.creadoPor,
+      creadoEn: c.creadoEn,
+      cantidadFacturas: c.cantidadFacturas,
+      totalValor: c.totalValor,
+    }));
+    callback(list);
+  });
+}
+
+export async function getConsolidado(db, id) {
+  const snapshot = await get(ref(db, "consolidados/" + id));
+  return snapshot.exists() ? { id, ...snapshot.val() } : null;
+}
+
+export function deleteConsolidado(db, id) {
+  return remove(ref(db, "consolidados/" + id));
+}
+
+// Atomic: writes consolidado + deletes facturas in one multi-path update
+export function consolidateFacturas(db, consolidadoData, cufeKeys) {
+  const consolidadoId = push(ref(db, "consolidados")).key;
+  const updates = {};
+  updates["consolidados/" + consolidadoId] = consolidadoData;
+  for (const key of cufeKeys) {
+    updates["facturas/" + key] = null;
+  }
+  return update(ref(db), updates);
+}
+
+// Atomic: restores facturas from a consolidado back to facturas/
+export function restoreFromConsolidado(db, consolidadoId, facturas, removeAll) {
+  const updates = {};
+  for (const [cufeKey, factura] of Object.entries(facturas)) {
+    updates["facturas/" + cufeKey] = factura;
+    updates["consolidados/" + consolidadoId + "/facturas/" + cufeKey] = null;
+  }
+  if (removeAll) {
+    updates["consolidados/" + consolidadoId] = null;
+  }
+  return update(ref(db), updates);
+}

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { C, ESTADOS_COMPRAS_ALERTA } from "../constants";
 import { useFilters } from "../hooks/useFilters";
 import { useFacturas } from "../hooks/useFacturas";
-import { exportToExcel } from "../utils";
+import { exportToExcel, parseDateDMY } from "../utils";
 import {
   isFirebaseConfigured,
   initFirebase,
@@ -10,6 +10,10 @@ import {
   savePredefinedResponses,
   subscribeErpPrefixes,
   saveErpPrefixes,
+  subscribeConsolidados,
+  getConsolidado,
+  deleteConsolidado,
+  restoreFromConsolidado,
 } from "../firebase";
 import SearchBar from "./SearchBar";
 import FilterChips from "./FilterChips";
@@ -17,6 +21,8 @@ import StatsBar from "./StatsBar";
 import FacturasTable from "./FacturasTable";
 import UploadExcel from "./UploadExcel";
 import AddRowForm from "./AddRowForm";
+import ConsolidadosList from "./ConsolidadosList";
+import ConsolidadoDetail from "./ConsolidadoDetail";
 
 // Short beep via the Web Audio API — no external sound file needed.
 function playBeep() {
@@ -70,7 +76,16 @@ export default function FacturasModule({ user, role, onBack }) {
   const [configDraft, setConfigDraft] = useState(null);
   const [newOptionText, setNewOptionText] = useState({});
 
-  const { data, loading, updateField, addFactura, bulkAdd, deleteFactura, deleteAll } = useFacturas();
+  const { data, loading, updateField, addFactura, bulkAdd, deleteFactura, deleteAll, consolidate } = useFacturas();
+
+  // Consolidados state
+  const [consView, setConsView] = useState(null); // null | "list" | "detail"
+  const [consolidados, setConsolidados] = useState([]);
+  const [consDetail, setConsDetail] = useState(null);
+  const [showConsolidar, setShowConsolidar] = useState(false);
+  const [consNombre, setConsNombre] = useState("");
+  const [consDesde, setConsDesde] = useState("");
+  const [consHasta, setConsHasta] = useState("");
 
   const canConfig = isCont || user.role === "admin";
 
@@ -79,9 +94,11 @@ export default function FacturasModule({ user, role, onBack }) {
     if (!configDbRef.current) configDbRef.current = initFirebase();
     const unsub1 = subscribePredefinedResponses(configDbRef.current, (v) => setPredefinedResponses(v || {}));
     const unsub2 = subscribeErpPrefixes(configDbRef.current, (v) => setErpPrefixes(v || []));
+    const unsub3 = subscribeConsolidados(configDbRef.current, setConsolidados);
     return () => {
       unsub1();
       unsub2();
+      unsub3();
     };
   }, [configuredFb]);
 
@@ -157,8 +174,71 @@ export default function FacturasModule({ user, role, onBack }) {
     showToast("Factura eliminada.");
   };
 
+  // Preview count for consolidation modal
+  const consPreviewCount = (consDesde && consHasta) ? data.filter((r) => {
+    const fe = parseDateDMY(r.fechaEmision);
+    if (!fe) return false;
+    return fe >= new Date(consDesde + "T00:00:00") && fe <= new Date(consHasta + "T23:59:59");
+  }).length : 0;
+
+  const handleConsolidar = () => {
+    if (!consNombre.trim() || !consDesde || !consHasta) return;
+    const count = consolidate(consNombre.trim(), consDesde, consHasta, user.name);
+    setShowConsolidar(false);
+    setConsNombre("");
+    setConsDesde("");
+    setConsHasta("");
+    showToast(count > 0 ? `${count} facturas consolidadas en "${consNombre.trim()}".` : "No se encontraron facturas en ese rango.");
+  };
+
+  const handleConsView = useCallback(async (id) => {
+    if (!configDbRef.current) return;
+    const detail = await getConsolidado(configDbRef.current, id);
+    if (detail) {
+      setConsDetail(detail);
+      setConsView("detail");
+    }
+  }, []);
+
+  const handleConsDelete = useCallback(async (id) => {
+    if (!configDbRef.current) return;
+    await deleteConsolidado(configDbRef.current, id);
+    showToast("Consolidado eliminado.");
+  }, []);
+
+  const handleConsDownload = useCallback(async (id) => {
+    if (!configDbRef.current) return;
+    const detail = await getConsolidado(configDbRef.current, id);
+    if (!detail?.facturas) return;
+    const rows = Object.values(detail.facturas);
+    exportToExcel(rows, `Consolidado_${detail.nombre.replace(/\s+/g, "_")}.xlsx`);
+  }, []);
+
+  const handleConsRestore = useCallback(async (facturaEntries) => {
+    if (!configDbRef.current || !consDetail) return;
+    const remaining = Object.keys(consDetail.facturas).length - Object.keys(facturaEntries).length;
+    await restoreFromConsolidado(configDbRef.current, consDetail.id, facturaEntries, remaining === 0);
+    if (remaining === 0) {
+      setConsView("list");
+      setConsDetail(null);
+      showToast("Todas las facturas restauradas. Consolidado eliminado.");
+    } else {
+      const updated = await getConsolidado(configDbRef.current, consDetail.id);
+      setConsDetail(updated);
+      showToast(`${Object.keys(facturaEntries).length} factura(s) restauradas al tablero.`);
+    }
+  }, [consDetail]);
+
+  const handleConsRestoreAll = useCallback(async () => {
+    if (!configDbRef.current || !consDetail?.facturas) return;
+    await restoreFromConsolidado(configDbRef.current, consDetail.id, consDetail.facturas, true);
+    setConsView("list");
+    setConsDetail(null);
+    showToast("Todas las facturas restauradas. Consolidado eliminado.");
+  }, [consDetail]);
+
   const pendingCount = loading ? 0 : isCont
-    ? data.filter((r) => (r.rtaCompras && r.rtaRevisada === false) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length
+    ? data.filter((r) => (r.rtaCompras && r.rtaRevisada === false && (!r.estadoCompras || ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras))) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length
     : data.filter((r) => r.rtaContabilidad && r.rtaContRevisada === false).length;
 
   useEffect(() => {
@@ -264,81 +344,112 @@ export default function FacturasModule({ user, role, onBack }) {
       </header>
 
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "20px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase" }}>
-              Aclaración de facturas
-            </div>
-            <h1 style={{ fontSize: 18, fontWeight: 700, color: C.navy, margin: "2px 0 0" }}>Facturas</h1>
-          </div>
-          <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <SearchBar search={search} setSearch={setSearch} />
-            {isCont && (
-              <>
-                <button onClick={() => setShowAdd((v) => !v)} style={actionBtn}>
-                  + Agregar
-                </button>
-                <UploadExcel onUpload={handleExcelUpload} />
-                <button onClick={handleBackup} style={actionBtn}>
-                  Descargar Respaldo
-                </button>
-              </>
-            )}
-            {user.role === "admin" && (
-              <button onClick={() => setShowDeleteAll(true)} style={{ ...actionBtn, color: C.red, borderColor: "#fecaca" }}>
-                Borrar Todo
-              </button>
-            )}
-            {canConfig && (
-              <button onClick={openConfig} style={actionBtn}>
-                ⚙ Respuestas
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-          <FilterChips filtroEstado={filtroEstado} setFiltroEstado={setFiltroEstado} stats={stats} />
-          <StatsBar stats={stats} filteredStats={filteredStats} role={role} />
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: 1 }}>F. Emisión:</span>
-          <input type="date" style={dateInput} value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
-          <span style={{ fontSize: 11, color: C.g500 }}>a</span>
-          <input type="date" style={dateInput} value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
-          {(fechaDesde || fechaHasta) && (
-            <button
-              onClick={() => {
-                setFechaDesde("");
-                setFechaHasta("");
-              }}
-              style={{ background: "none", border: "none", color: C.blue, fontSize: 11, cursor: "pointer" }}
-            >
-              Limpiar
-            </button>
-          )}
-        </div>
-
-        {isCont && showAdd && <AddRowForm onAdd={handleAddRow} onCancel={() => setShowAdd(false)} />}
-
-        {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>
-            <div className="spinner" />
-            Cargando facturas…
-          </div>
-        ) : (
-          <FacturasTable
-            data={filtered}
-            allData={data}
-            role={role}
-            onUpdate={(id, key, value) => updateField(id, key, value, user.name, role)}
-            onDelete={handleDeleteRow}
-            totalCount={data.length}
-            onWarn={showToast}
-            predefinedResponses={predefinedResponses}
-            erpPrefixes={erpPrefixes}
+        {consView === "list" ? (
+          <ConsolidadosList
+            consolidados={consolidados}
+            onView={handleConsView}
+            onDelete={handleConsDelete}
+            onDownload={handleConsDownload}
+            onBack={() => setConsView(null)}
           />
+        ) : consView === "detail" && consDetail ? (
+          <ConsolidadoDetail
+            consolidado={consDetail}
+            onBack={() => { setConsView("list"); setConsDetail(null); }}
+            onRestore={handleConsRestore}
+            onRestoreAll={handleConsRestoreAll}
+            onDownload={() => {
+              const rows = Object.values(consDetail.facturas || {});
+              exportToExcel(rows, `Consolidado_${consDetail.nombre.replace(/\s+/g, "_")}.xlsx`);
+            }}
+          />
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase" }}>
+                  Aclaración de facturas
+                </div>
+                <h1 style={{ fontSize: 18, fontWeight: 700, color: C.navy, margin: "2px 0 0" }}>Facturas</h1>
+              </div>
+              <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <SearchBar search={search} setSearch={setSearch} />
+                {isCont && (
+                  <>
+                    <button onClick={() => setShowAdd((v) => !v)} style={actionBtn}>
+                      + Agregar
+                    </button>
+                    <UploadExcel onUpload={handleExcelUpload} />
+                    <button onClick={handleBackup} style={actionBtn}>
+                      Descargar Respaldo
+                    </button>
+                  </>
+                )}
+                {user.role === "admin" && (
+                  <>
+                    <button onClick={() => setShowConsolidar(true)} style={{ ...actionBtn, color: C.accent, borderColor: C.accent }}>
+                      Consolidar
+                    </button>
+                    <button onClick={() => setConsView("list")} style={actionBtn}>
+                      Consolidados
+                    </button>
+                    <button onClick={() => setShowDeleteAll(true)} style={{ ...actionBtn, color: C.red, borderColor: "#fecaca" }}>
+                      Borrar Todo
+                    </button>
+                  </>
+                )}
+                {canConfig && (
+                  <button onClick={openConfig} style={actionBtn}>
+                    ⚙ Respuestas
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+              <FilterChips filtroEstado={filtroEstado} setFiltroEstado={setFiltroEstado} stats={stats} />
+              <StatsBar stats={stats} filteredStats={filteredStats} role={role} />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: 1 }}>F. Emisión:</span>
+              <input type="date" style={dateInput} value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
+              <span style={{ fontSize: 11, color: C.g500 }}>a</span>
+              <input type="date" style={dateInput} value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
+              {(fechaDesde || fechaHasta) && (
+                <button
+                  onClick={() => {
+                    setFechaDesde("");
+                    setFechaHasta("");
+                  }}
+                  style={{ background: "none", border: "none", color: C.blue, fontSize: 11, cursor: "pointer" }}
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+
+            {isCont && showAdd && <AddRowForm onAdd={handleAddRow} onCancel={() => setShowAdd(false)} />}
+
+            {loading ? (
+              <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>
+                <div className="spinner" />
+                Cargando facturas…
+              </div>
+            ) : (
+              <FacturasTable
+                data={filtered}
+                allData={data}
+                role={role}
+                onUpdate={(id, key, value) => updateField(id, key, value, user.name, role)}
+                onDelete={handleDeleteRow}
+                totalCount={data.length}
+                onWarn={showToast}
+                predefinedResponses={predefinedResponses}
+                erpPrefixes={erpPrefixes}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -360,6 +471,80 @@ export default function FacturasModule({ user, role, onBack }) {
           }}
         >
           {toast}
+        </div>
+      )}
+
+      {showConsolidar && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+        >
+          <div style={{ background: C.white, borderRadius: 8, padding: 24, maxWidth: 400, width: "90%", boxShadow: "0 8px 24px rgba(0,0,0,.2)" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 14 }}>Consolidar facturas</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.g500, display: "block", marginBottom: 4 }}>Nombre del consolidado</label>
+              <input
+                value={consNombre}
+                onChange={(e) => setConsNombre(e.target.value)}
+                placeholder="Ej: Septiembre 2026"
+                autoFocus
+                style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: "7px 10px", border: `1px solid ${C.g200}`, borderRadius: 4 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.g500, display: "block", marginBottom: 4 }}>Desde</label>
+                <input type="date" value={consDesde} onChange={(e) => setConsDesde(e.target.value)} style={{ ...dateInput, width: "100%", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.g500, display: "block", marginBottom: 4 }}>Hasta</label>
+                <input type="date" value={consHasta} onChange={(e) => setConsHasta(e.target.value)} style={{ ...dateInput, width: "100%", boxSizing: "border-box" }} />
+              </div>
+            </div>
+            {consDesde && consHasta && (
+              <div style={{ fontSize: 12, color: consPreviewCount > 0 ? C.navy : C.g500, fontWeight: 600, marginBottom: 14, padding: "8px 12px", background: C.off, borderRadius: 4 }}>
+                {consPreviewCount > 0
+                  ? `${consPreviewCount} factura(s) serán archivadas`
+                  : "No hay facturas en este rango"}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleConsolidar}
+                disabled={!consNombre.trim() || !consDesde || !consHasta || consPreviewCount === 0}
+                style={{
+                  background: consNombre.trim() && consDesde && consHasta && consPreviewCount > 0 ? C.accent : C.g200,
+                  color: C.white,
+                  border: "none",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "7px 16px",
+                  borderRadius: 4,
+                  cursor: consNombre.trim() && consDesde && consHasta && consPreviewCount > 0 ? "pointer" : "not-allowed",
+                }}
+              >
+                Consolidar
+              </button>
+              <button
+                onClick={() => {
+                  setShowConsolidar(false);
+                  setConsNombre("");
+                  setConsDesde("");
+                  setConsHasta("");
+                }}
+                style={{ background: C.g100, color: C.g700, border: "none", fontSize: 11, fontWeight: 600, padding: "7px 16px", borderRadius: 4, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

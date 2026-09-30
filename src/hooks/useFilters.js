@@ -14,7 +14,7 @@ export function useFilters(data) {
     if (filtroEstado === "SIN ESTADO") {
       d = d.filter((r) => !r.estado);
     } else if (filtroEstado === "PENDIENTE REVISIÓN") {
-      d = d.filter((r) => (r.rtaCompras && r.rtaRevisada === false) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false));
+      d = d.filter((r) => (r.rtaCompras && r.rtaRevisada === false && (!r.estadoCompras || ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras))) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false));
     } else if (filtroEstado !== "TODOS") {
       d = d.filter((r) => r.estado === filtroEstado);
     }
@@ -49,7 +49,7 @@ export function useFilters(data) {
       noRadicada: data.filter((r) => r.estado === "NO RADICADA").length,
       sinEstado: data.filter((r) => !r.estado).length,
       anulado: data.filter((r) => r.estado === "ANULADO").length,
-      pendienteRevision: data.filter((r) => (r.rtaCompras && r.rtaRevisada === false) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length,
+      pendienteRevision: data.filter((r) => (r.rtaCompras && r.rtaRevisada === false && (!r.estadoCompras || ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras))) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length,
       totalVal: data.reduce((s, r) => s + (r.total || 0), 0),
     }),
     [data]

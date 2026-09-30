@@ -8,8 +8,11 @@ import {
   removeFactura,
   removeAllFacturas,
   toSafeKey,
+  consolidateFacturas,
+  restoreFromConsolidado,
 } from "../firebase";
 import { SAMPLE_FACTURAS, ESTADOS_COMPRAS_ALERTA } from "../constants";
+import { parseDateDMY } from "../utils";
 
 // Converts Firebase's {cufeHash: factura} object into an array, using the hash as `id`.
 function toArray(fbData) {
@@ -127,5 +130,44 @@ export function useFacturas() {
     }
   }, [configured]);
 
-  return { data, loading, updateField, addFactura, bulkAdd, deleteFactura, deleteAll };
+  // Archives facturas whose fechaEmision falls within [fechaDesde, fechaHasta]
+  // into consolidados/, removing them from facturas/. Returns the count archived.
+  const consolidate = useCallback(
+    (nombre, fechaDesde, fechaHasta, username) => {
+      const desde = new Date(fechaDesde + "T00:00:00");
+      const hasta = new Date(fechaHasta + "T23:59:59");
+      const matching = data.filter((r) => {
+        const fe = parseDateDMY(r.fechaEmision);
+        return fe && fe >= desde && fe <= hasta;
+      });
+      if (matching.length === 0) return 0;
+
+      const facturas = {};
+      const cufeKeys = [];
+      for (const r of matching) {
+        facturas[r.id] = { ...r };
+        delete facturas[r.id].id; // id is the Firebase key, not a data field
+        cufeKeys.push(r.id);
+      }
+
+      const consolidadoData = {
+        nombre,
+        fechaDesde,
+        fechaHasta,
+        creadoPor: username,
+        creadoEn: new Date().toISOString(),
+        cantidadFacturas: matching.length,
+        totalValor: matching.reduce((s, r) => s + (r.total || 0), 0),
+        facturas,
+      };
+
+      if (configured) {
+        consolidateFacturas(dbRef.current, consolidadoData, cufeKeys);
+      }
+      return matching.length;
+    },
+    [configured, data]
+  );
+
+  return { data, loading, updateField, addFactura, bulkAdd, deleteFactura, deleteAll, consolidate };
 }
