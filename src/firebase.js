@@ -165,7 +165,7 @@ export function consolidateFacturas(db, consolidadoData, cufeKeys) {
 }
 
 // Atomic: restores facturas from a consolidado back to facturas/
-export function restoreFromConsolidado(db, consolidadoId, facturas, removeAll) {
+export async function restoreFromConsolidado(db, consolidadoId, facturas, removeAll) {
   const updates = {};
   for (const [cufeKey, factura] of Object.entries(facturas)) {
     updates["facturas/" + cufeKey] = factura;
@@ -174,5 +174,15 @@ export function restoreFromConsolidado(db, consolidadoId, facturas, removeAll) {
   if (removeAll) {
     updates["consolidados/" + consolidadoId] = null;
   }
-  return update(ref(db), updates);
+  await update(ref(db), updates);
+  // Update metadata counts after partial restore
+  if (!removeAll) {
+    const snap = await get(ref(db, "consolidados/" + consolidadoId + "/facturas"));
+    const remaining = snap.exists() ? snap.val() : {};
+    const entries = Object.values(remaining);
+    await update(ref(db, "consolidados/" + consolidadoId), {
+      cantidadFacturas: entries.length,
+      totalValor: entries.reduce((s, r) => s + (r.total || 0), 0),
+    });
+  }
 }

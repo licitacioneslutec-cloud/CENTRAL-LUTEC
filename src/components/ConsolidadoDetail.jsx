@@ -55,7 +55,11 @@ export default function ConsolidadoDetail({ consolidado, onBack, onRestore, onRe
     if (!selected.size) return;
     if (!window.confirm(`¿Restaurar ${selected.size} factura(s) al tablero principal?`)) return;
     const entries = {};
-    for (const r of rows) if (selected.has(r.id)) entries[r.id] = r;
+    for (const r of rows) {
+      if (!selected.has(r.id)) continue;
+      const { id, ...data } = r;
+      entries[id] = data;
+    }
     onRestore?.(entries);
   };
 
