@@ -37,7 +37,7 @@ const btn = {
 };
 
 // ─── Detail view of an archived consolidado: browse and restore facturas ───
-export default function ConsolidadoDetail({ consolidado, onBack, onRestore, onRestoreAll, onDownload }) {
+export default function ConsolidadoDetail({ consolidado, onBack, onRestore, onRestoreAll, onDownload, isAdmin }) {
   const [selected, setSelected] = useState(() => new Set());
 
   const rows = Object.entries(consolidado.facturas || {}).map(([id, data]) => ({ ...data, id }));
@@ -80,10 +80,14 @@ export default function ConsolidadoDetail({ consolidado, onBack, onRestore, onRe
         </div>
         {rows.length > 0 && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={{ ...btn, opacity: selected.size ? 1 : 0.5, cursor: selected.size ? "pointer" : "not-allowed" }} disabled={!selected.size} onClick={handleRestoreSelected}>
-              Restaurar seleccionadas
-            </button>
-            <button style={btn} onClick={handleRestoreAll}>Restaurar todas</button>
+            {isAdmin && (
+              <>
+                <button style={{ ...btn, opacity: selected.size ? 1 : 0.5, cursor: selected.size ? "pointer" : "not-allowed" }} disabled={!selected.size} onClick={handleRestoreSelected}>
+                  Restaurar seleccionadas
+                </button>
+                <button style={btn} onClick={handleRestoreAll}>Restaurar todas</button>
+              </>
+            )}
             <button style={{ ...btn, background: C.accent, color: C.white, borderColor: C.accentDark }} onClick={onDownload}>Descargar Excel</button>
           </div>
         )}
@@ -96,9 +100,11 @@ export default function ConsolidadoDetail({ consolidado, onBack, onRestore, onRe
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
               <tr>
-                <th style={th}>
-                  <input type="checkbox" checked={selected.size === rows.length} onChange={toggleAll} title="Seleccionar todas" />
-                </th>
+                {isAdmin && (
+                  <th style={th}>
+                    <input type="checkbox" checked={selected.size === rows.length} onChange={toggleAll} title="Seleccionar todas" />
+                  </th>
+                )}
                 {cols.map((key) => (
                   <th key={key} style={th}>{ALL_FIELDS.find((f) => f.key === key)?.label || key}</th>
                 ))}
@@ -107,9 +113,11 @@ export default function ConsolidadoDetail({ consolidado, onBack, onRestore, onRe
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} style={{ background: selected.has(r.id) ? C.g100 : C.white }}>
-                  <td style={td}>
-                    <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} />
-                  </td>
+                  {isAdmin && (
+                    <td style={td}>
+                      <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} />
+                    </td>
+                  )}
                   {cols.map((key) => (
                     <td key={key} style={td}>{key === "total" ? fmt(r[key]) : r[key] ?? ""}</td>
                   ))}

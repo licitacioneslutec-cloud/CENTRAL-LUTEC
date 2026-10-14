@@ -22,7 +22,7 @@ function fmtCreadoEn(iso) {
 }
 
 // ─── List of archived monthly consolidados, with view/download/delete actions ───
-export default function ConsolidadosList({ consolidados, onView, onDelete, onDownload, onBack }) {
+export default function ConsolidadosList({ consolidados, onView, onDelete, onDownload, onBack, isAdmin }) {
   const [confirmId, setConfirmId] = useState(null);
 
   const sorted = [...consolidados].sort((a, b) => new Date(b.creadoEn) - new Date(a.creadoEn));
@@ -80,7 +80,7 @@ export default function ConsolidadosList({ consolidados, onView, onDelete, onDow
               <button style={{ ...actionBtn, color: C.green, borderColor: C.green }} onClick={() => onDownload(cons.id)}>
                 Descargar
               </button>
-              {confirmId === cons.id ? (
+              {isAdmin && (confirmId === cons.id ? (
                 <span style={{ fontSize: 12, color: C.red, display: "flex", alignItems: "center", gap: 6 }}>
                   ¿Eliminar?
                   <button
@@ -97,7 +97,7 @@ export default function ConsolidadosList({ consolidados, onView, onDelete, onDow
                 <button style={{ ...actionBtn, color: C.red, borderColor: C.red }} onClick={() => setConfirmId(cons.id)}>
                   Eliminar
                 </button>
-              )}
+              ))}
             </div>
           </div>
         ))

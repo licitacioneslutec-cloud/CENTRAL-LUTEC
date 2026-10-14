@@ -238,7 +238,7 @@ export default function FacturasModule({ user, role, onBack }) {
   }, [consDetail]);
 
   const pendingCount = loading ? 0 : isCont
-    ? data.filter((r) => (r.rtaCompras && r.rtaRevisada === false && (!r.estadoCompras || ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras))) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length
+    ? data.filter((r) => (r.rtaCompras && r.rtaRevisada === false && ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras)) || (ESTADOS_COMPRAS_ALERTA.includes(r.estadoCompras) && r.estadoComprasRevisado === false)).length
     : data.filter((r) => r.rtaContabilidad && r.rtaContRevisada === false).length;
 
   useEffect(() => {
@@ -351,6 +351,7 @@ export default function FacturasModule({ user, role, onBack }) {
             onDelete={handleConsDelete}
             onDownload={handleConsDownload}
             onBack={() => setConsView(null)}
+            isAdmin={user.role === "admin"}
           />
         ) : consView === "detail" && consDetail ? (
           <ConsolidadoDetail
@@ -362,6 +363,7 @@ export default function FacturasModule({ user, role, onBack }) {
               const rows = Object.values(consDetail.facturas || {});
               exportToExcel(rows, `Consolidado_${consDetail.nombre.replace(/\s+/g, "_")}.xlsx`);
             }}
+            isAdmin={user.role === "admin"}
           />
         ) : (
           <>
@@ -390,14 +392,14 @@ export default function FacturasModule({ user, role, onBack }) {
                     <button onClick={() => setShowConsolidar(true)} style={{ ...actionBtn, color: C.accent, borderColor: C.accent }}>
                       Consolidar
                     </button>
-                    <button onClick={() => setConsView("list")} style={actionBtn}>
-                      Consolidados
-                    </button>
                     <button onClick={() => setShowDeleteAll(true)} style={{ ...actionBtn, color: C.red, borderColor: "#fecaca" }}>
                       Borrar Todo
                     </button>
                   </>
                 )}
+                <button onClick={() => setConsView("list")} style={actionBtn}>
+                  Consolidados
+                </button>
                 {canConfig && (
                   <button onClick={openConfig} style={actionBtn}>
                     ⚙ Respuestas
