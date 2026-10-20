@@ -21,6 +21,7 @@
 - `src/components/UploadExcel.jsx` — bulk Excel import
 - `src/components/Badge.jsx` — review status badges
 - `src/components/DocumentosModule.jsx` — módulo Documentos Proveedor (compras role, n8n integration)
+- `src/components/ContratosModule.jsx` + `src/contratosFirebase.js` — módulo Contratos Monday (contabilidad): alarmas por fecha final, comentarios y fecha de compromiso; RTDB `contratosMonday` (n8n reemplaza completo) y `contratosNotas/{id}` (solo portal)
 - `src/components/DocumentosTable.jsx` — table for documentos proveedor
 - `src/components/SoporteUpload.jsx` — soporte file upload component
 - `src/components/PasswordGate.jsx` — password modal for external modules + `hashPassword` helper

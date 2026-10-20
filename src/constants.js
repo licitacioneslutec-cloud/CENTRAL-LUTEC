@@ -14,6 +14,7 @@ export const DEPARTMENTS = [
     id: "contabilidad", name: "Contabilidad", icon: "📊", desc: "Radicación de facturas y lectura de órdenes de compra DIAN",
     modules: [
       { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad" },
+      { id: "contratos", name: "Contratos Monday", desc: "Vencimientos y seguimiento de contratos", type: "internal", status: "activo", role: "contabilidad", view: "contratos" },
       { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente" },
     ],
   },

@@ -1,12 +1,12 @@
 import { C } from "../constants";
 
-export default function SearchBar({ search, setSearch }) {
+export default function SearchBar({ search, setSearch, placeholder = "Buscar folio, emisor, NIT, CUFE, N° ERP..." }) {
   return (
     <div style={{ position: "relative", display: "inline-block" }}>
       <input
         type="text"
         className="search-input"
-        placeholder="Buscar folio, emisor, NIT, CUFE, N° ERP..."
+        placeholder={placeholder}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={{

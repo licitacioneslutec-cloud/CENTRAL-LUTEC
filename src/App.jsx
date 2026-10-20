@@ -2,6 +2,7 @@ import { useState, useEffect, Component } from "react";
 import Portal from "./components/Portal";
 import FacturasModule from "./components/FacturasModule";
 import DocumentosModule from "./components/DocumentosModule";
+import ContratosModule from "./components/ContratosModule";
 import SoporteUpload from "./components/SoporteUpload";
 import AdminPanel from "./components/AdminPanel";
 import LoginScreen from "./components/LoginScreen";
@@ -74,6 +75,9 @@ export default function App() {
   } else if (view === "documentos") {
     const effectiveRole = role || (user.role === "admin" ? "compras" : user.role);
     content = <DocumentosModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;
+  } else if (view === "contratos") {
+    const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
+    content = <ContratosModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;
   } else if (view === "facturas") {
     const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
     content = <FacturasModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;
