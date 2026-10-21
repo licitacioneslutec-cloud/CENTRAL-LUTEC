@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C } from "../constants";
 import { isFirebaseConfigured, initFirebase } from "../firebase";
-import { subscribeContratos, addComentario, setFechaCompromiso } from "../contratosFirebase";
-import { fmt } from "../utils";
+import { subscribeContratos, addComentario, setFechaCompromiso, setCampo } from "../contratosFirebase";
+import { fmt, exportContratosExcel } from "../utils";
+import { CAMPOS_EXCEL, extraerContrato, parseGrupo, valorEfectivo, diasEntre } from "../contratosParse";
 import SearchBar from "./SearchBar";
 
 const SYNC_URL = "https://licitaciones3.app.n8n.cloud/webhook/contratos-sync";
@@ -23,11 +24,10 @@ const FILTROS = [
 
 // Remaining Monday fields shown in the expanded row. Third item true = peso amount.
 const DETALLE = [
-  ["estado2", "Estado 2"], ["fechaInicio", "Fecha inicio"],
-  ["retegarantiaCobro", "Retegarantía cobro", true], ["retegarantiaAcum", "Retegarantía acum.", true],
+  ["estado2", "Estado 2"], ["retegarantiaAcum", "Retegarantía acum.", true],
   ["retePagada", "Rete pagada", true], ["liquidacionIng", "Liquidación Ing."],
   ["radicadoCont", "Radicado Cont."], ["pagoRete", "Pago rete"],
-  ["iva", "IVA", true], ["anticipo", "Anticipo", true], ["estadoAnticipo", "Estado anticipo"],
+  ["iva", "IVA", true], ["estadoAnticipo", "Estado anticipo"],
   ["administracion", "Administración", true],
 ];
 
@@ -46,6 +46,8 @@ function alarmaDe(dias) {
   return "VIGENTE";
 }
 
+const labelStyle = { fontSize: 10, fontWeight: 600, color: C.g500, textTransform: "uppercase" };
+const inputStyle = { width: "100%", boxSizing: "border-box", fontSize: 12, padding: "5px 7px", border: `1px solid ${C.g200}`, borderRadius: 4, outline: "none" };
 const pct = (v) => (v === undefined || v === null || v === "" ? "—" : Math.round(Number(v)) + "%");
 const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -81,8 +83,10 @@ export default function ContratosModule({ user, role, onBack }) {
     return Object.entries(monday || {})
       .filter(([k]) => k !== "_sync")
       .map(([id, c]) => {
-        const dias = diasPara(c.fechaFin);
-        return { ...c, id, dias, alarma: alarmaDe(dias), nota: (notas || {})[id] || {} };
+        const base = { ...c, id, nota: (notas || {})[id] || {}, auto: { ...parseGrupo(c.grupo), ...extraerContrato(c.nombre) } };
+        const v = Object.fromEntries(CAMPOS_EXCEL.map((f) => [f.key, valorEfectivo(base, f)]));
+        const dias = diasPara(v.fechaFin);
+        return { ...base, v, dias, alarma: alarmaDe(dias) };
       });
   }, [raw]);
 
@@ -97,7 +101,7 @@ export default function ContratosModule({ user, role, onBack }) {
     const g = {};
     contratos
       .filter((c) => filtro === "TODOS" || (filtro === "ALARMA" ? CON_ALARMA.includes(c.alarma) : c.alarma === filtro))
-      .filter((c) => !q || [c.nombre, c.nContrato, c.grupo].some((v) => String(v || "").toLowerCase().includes(q)))
+      .filter((c) => !q || [c.nombre, c.nContrato, c.grupo, c.v.contrato, c.v.entidad, c.v.proyecto].some((v) => String(v || "").toLowerCase().includes(q)))
       .forEach((c) => { (g[c.grupo || "Sin grupo"] ||= []).push(c); });
     return Object.entries(g)
       .map(([nombre, rows]) => ({ nombre, rows: rows.sort((a, b) => (a.dias ?? Infinity) - (b.dias ?? Infinity)) }))
@@ -105,6 +109,17 @@ export default function ContratosModule({ user, role, onBack }) {
   }, [contratos, search, filtro]);
 
   const sync = raw.monday?._sync;
+  const visibles = useMemo(() => grupos.flatMap((g) => g.rows), [grupos]);
+
+  // Saves one field on blur; empty or equal-to-current input is ignored (reset uses the ↺ button).
+  const guardar = (c, f, txt) => {
+    const t = txt.trim();
+    const cur = c.v[f.key];
+    if (t === "" || t === String(cur ?? "")) return;
+    const val = f.tipo === "number" || f.tipo === "pct" ? Number(t) : t;
+    if ((f.tipo === "number" || f.tipo === "pct") && isNaN(val)) return;
+    setCampo(dbRef.current, c.id, f.key, val);
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -162,6 +177,7 @@ export default function ContratosModule({ user, role, onBack }) {
           </div>
           <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <SearchBar search={search} setSearch={setSearch} placeholder="Buscar contrato, nombre, proyecto..." />
+            <button onClick={() => exportContratosExcel(visibles)} disabled={!visibles.length} style={actionBtn}>⬇ Exportar Excel</button>
             <button onClick={handleSync} disabled={syncing}
               style={{ ...actionBtn, background: syncing ? C.g100 : C.accent, color: C.white, borderColor: C.accent }}>
               {syncing ? "Sincronizando…" : "⟳ Sincronizar Monday"}
@@ -193,6 +209,7 @@ export default function ContratosModule({ user, role, onBack }) {
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", background: C.g100 }}>
                   <span style={{ fontSize: 11, color: C.g500 }}>{isCol ? "▶" : "▼"}</span>
                   <strong style={{ fontSize: 13, color: C.navy }}>{g.nombre}</strong>
+                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>{g.rows[0].v.entidad}</span>
                   <span style={{ fontSize: 11, color: C.g500 }}>{g.rows.length} contratos</span>
                   <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                     {CON_ALARMA.filter((a) => gc[a]).map((a) => (
@@ -211,20 +228,49 @@ export default function ContratosModule({ user, role, onBack }) {
                         <div key={c.id} style={{ borderBottom: `1px solid ${C.g100}` }}>
                           <div onClick={() => { setOpen(isOpen ? null : c.id); setDraft(""); }}
                             style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "8px 14px", fontSize: 12, color: C.g900, cursor: "pointer", alignItems: "center", background: isOpen ? C.blueL : "transparent" }}>
-                            <span>{c.nContrato || "—"}</span>
+                            <span>{c.v.contrato || "—"}</span>
                             <span style={{ fontWeight: 600 }}>{c.nombre}</span>
                             <span>{c.estado || "—"}</span>
                             <span>{fmt(c.valor)}</span>
                             <span>{fmt(c.facturacion)}</span>
                             <span>{pct(c.avance)}</span>
                             <span>{fmt(c.saldo)}</span>
-                            <span>{c.fechaFin || "—"}</span>
+                            <span>{c.v.fechaFin || "—"}</span>
                             <span style={{ color: ALARMAS[c.alarma].color, fontWeight: 700 }}>{c.dias ?? "—"}</span>
                             <span>{badge(c.alarma)}</span>
                           </div>
                           {isOpen && (
                             <div style={{ padding: "12px 14px 16px", background: C.off, fontSize: 12 }}>
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 10, marginBottom: 12 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10, marginBottom: 12 }}>
+                                {CAMPOS_EXCEL.map((f) => {
+                                  const ov = c.nota.campos?.[f.key] ?? null;
+                                  const def = f.fuente(c);
+                                  const val = c.v[f.key];
+                                  const hint = ov !== null && def !== undefined && def !== null && def !== "";
+                                  return (
+                                    <div key={f.key} style={{ gridColumn: f.key === "objeto" ? "1 / -1" : undefined }}>
+                                      <div style={labelStyle}>{f.h}{ov !== null && <span style={{ color: C.accent }}> · ajustado</span>}</div>
+                                      <input key={c.id + f.key + String(val)} defaultValue={val ?? ""}
+                                        type={f.tipo === "date" ? "date" : f.tipo === "text" ? "text" : "number"} step="any"
+                                        onBlur={(e) => guardar(c, f, e.target.value)}
+                                        onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                                        style={{ ...inputStyle, borderColor: ov !== null ? C.accent : C.g200 }} />
+                                      {ov !== null && (
+                                        <div style={{ fontSize: 10, color: C.g500, marginTop: 2 }}>
+                                          {hint && <>{f.monday ? "Monday" : "Auto"}: {f.tipo === "number" && f.key !== "otrosies" ? fmt(def) : f.tipo === "pct" ? pct(def) : String(def)} </>}
+                                          <button onClick={() => setCampo(dbRef.current, c.id, f.key, null)} title="Restablecer"
+                                            style={{ background: "none", border: "none", color: C.blue, cursor: "pointer", fontSize: 12, padding: 0 }}>↺</button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {(() => {
+                                  const p = diasEntre(c.v.fechaInicio, c.v.fechaFin);
+                                  return [["Tiempo de ejecución en días", p], ["Tiempo de ejecución en meses", p === null ? null : (p / 30).toFixed(1)], ["Días de ejecución", p === null ? null : c.dias]].map(([l, x]) => (
+                                    <div key={l}><div style={labelStyle}>{l} (calculado)</div><div style={{ padding: "5px 0", color: C.g900 }}>{x ?? "—"}</div></div>
+                                  ));
+                                })()}
                                 {DETALLE.map(([k, label, num]) => (
                                   <div key={k}>
                                     <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, textTransform: "uppercase" }}>{label}</div>
