@@ -1,16 +1,18 @@
 // ─── Firebase helpers for the Contratos module ───
 // contratosExcel/contratos/{contratoKey}: { hoja, contrato, orden, actualizadoAt, actualizadoPor, archivo, filas: [{tipo, ...campos}] }
+// contratosAlias/{keyOrigen}: keyDestino — memoria de uniones: una carga con el contrato origen lo agrega al destino.
 // contratosExcel/_meta: { at, autor, archivo, nuevos, actualizados } de la última carga.
-// contratosNotas/{contratoKey}: portal-only { fechaCompromiso, comentarios: {pushId: {texto, autor, at}} }. Las cargas no lo tocan.
+// contratosNotas/{contratoKey}: portal-only { fechaCompromiso, ignorarSugerencia, comentarios: {pushId: {texto, autor, at}} }. Las cargas no lo tocan.
 import { ref, onValue, update, push, set, remove } from "firebase/database";
 
-// Calls cb({excel, notas}) whenever either path changes. Returns a combined unsubscribe fn.
+// Calls cb({excel, notas, alias}) whenever any path changes. Returns a combined unsubscribe fn.
 export function subscribeContratos(db, cb) {
-  let excel = null, notas = null;
-  const emit = () => cb({ excel, notas });
+  let excel = null, notas = null, alias = null;
+  const emit = () => cb({ excel, notas, alias });
   const u1 = onValue(ref(db, "contratosExcel"), (s) => { excel = s.val(); emit(); });
   const u2 = onValue(ref(db, "contratosNotas"), (s) => { notas = s.val(); emit(); });
-  return () => { u1(); u2(); };
+  const u3 = onValue(ref(db, "contratosAlias"), (s) => { alias = s.val(); emit(); });
+  return () => { u1(); u2(); u3(); };
 }
 
 // Un solo update multi-path: crea/reemplaza SOLO los contratos recibidos (con `orden` ya resuelto) y _meta. Nunca borra otros.
@@ -43,6 +45,17 @@ export function eliminarContrato(db, key) {
 
 export function addComentario(db, key, { texto, autor, at }) {
   return set(push(ref(db, `contratosNotas/${key}/comentarios`)), { texto, autor, at });
+}
+
+// Un solo update multi-path en la raíz (uniones/movimientos: ver planMover en contratosExcel.js).
+export function aplicarCambios(db, upd) {
+  return update(ref(db), upd);
+}
+
+export const nuevoId = (db) => push(ref(db, "contratosNotas")).key;
+
+export function ignorarSugerencia(db, key) {
+  return update(ref(db, `contratosNotas/${key}`), { ignorarSugerencia: true });
 }
 
 export function setFechaCompromiso(db, key, fecha) {

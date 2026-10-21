@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C } from "../constants";
 import { isFirebaseConfigured, initFirebase } from "../firebase";
-import { subscribeContratos, addComentario, setFechaCompromiso, guardarCarga, setCampoFila, eliminarContrato, crearContrato, agregarFila } from "../contratosFirebase";
+import { subscribeContratos, addComentario, setFechaCompromiso, guardarCarga, setCampoFila, eliminarContrato, crearContrato, agregarFila, aplicarCambios, nuevoId, ignorarSugerencia } from "../contratosFirebase";
 import { fmt, exportContratosExcel } from "../utils";
-import { CAMPOS, leerCuadro, agruparContratos, desdeDb, esOtrosi, esFinalizado, diasEntre, contratoKey, siguienteOrden, filaNueva } from "../contratosExcel";
+import { CAMPOS, ESTADOS, MODIFICA, norm, leerCuadro, agruparContratos, aplicarAlias, desdeDb, esBase, esOtrosi, esFinalizado, diasEntre, contratoKey, siguienteOrden, filaNueva, sugerencias, planMover } from "../contratosExcel";
 import SearchBar from "./SearchBar";
 
 const MAX_MB = 20;
@@ -40,29 +40,45 @@ function alarmaDe(dias) {
 
 const labelStyle = { fontSize: 10, fontWeight: 600, color: C.g500, textTransform: "uppercase" };
 const inputStyle = { width: "100%", boxSizing: "border-box", fontSize: 12, padding: "5px 7px", border: `1px solid ${C.g200}`, borderRadius: 4, outline: "none" };
-// Texto de una casilla -> valor guardable (null = vacío, undefined = número inválido). % se escribe en % y se guarda como fracción.
+// Texto de una casilla -> valor guardable (null = vacío, undefined = número inválido).
 function parseCampo(f, txt) {
   const t = txt.trim();
   if (t === "") return null;
-  if (f.tipo !== "number" && f.tipo !== "pct") return t;
+  if (f.tipo !== "number") return t;
   const n = Number(t.replace(",", "."));
-  return isNaN(n) ? undefined : f.tipo === "pct" ? n / 100 : n;
+  return isNaN(n) ? undefined : n;
 }
-const pct = (v) => (v === undefined || v === null || v === "" ? "—" : Math.round(Number(v) * 100) + "%");
+// Estado de la obra: solo los 3 valores; uno distinto (RENOVADO, número...) se ve como "(actual: X)" hasta que alguien lo cambie.
+// "EN EJECUCION" sin tilde cuenta como "EN EJECUCIÓN".
+const EstadoSelect = ({ value, onChange }) => {
+  const v = ESTADOS.find((e) => norm(e) === norm(value ?? "")) ?? value ?? "";
+  return (
+    <select value={v} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
+      <option value="" />
+      {v !== "" && !ESTADOS.includes(v) && <option value={v} style={{ color: C.g500 }}>(actual: {String(v)})</option>}
+      {ESTADOS.map((e) => <option key={e}>{e}</option>)}
+    </select>
+  );
+};
+const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 };
+const dialog = { background: C.white, borderRadius: 8, padding: 20, width: "100%", maxHeight: "90vh", overflowY: "auto" };
+const coincide = (c, q) => !q || [c.contrato, c.hoja, c.base.objeto, c.base.proyecto, c.base.entidad, c.base.nit].some((v) => String(v || "").toLowerCase().includes(q));
+const etiqueta = (c) => `${c.hoja} · ${c.contrato || "(sin número)"}`;
 const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
 
+const primario = { background: C.accent, color: C.white, borderColor: C.accent };
 const actionBtn = {
   background: C.white, border: `1px solid ${C.g200}`, fontSize: 11, fontWeight: 600,
   padding: "7px 12px", borderRadius: 4, cursor: "pointer", color: C.navy,
 };
-const COLS = "28px 130px minmax(140px,1fr) minmax(160px,1.4fr) 100px 110px 95px 60px 70px 95px";
-const SUBCOLS = "130px minmax(160px,1fr) 110px 95px 95px 120px";
+const COLS = "130px minmax(140px,1fr) minmax(160px,1.4fr) 100px 110px 95px 60px 70px 95px";
+const SUBCOLS = "130px minmax(160px,1fr) 110px 95px 95px 120px 130px";
 
 export default function ContratosModule({ user, role, onBack }) {
   const configured = isFirebaseConfigured();
   const dbRef = useRef(null);
   const fileRef = useRef(null);
-  const [raw, setRaw] = useState({ excel: null, notas: null });
+  const [raw, setRaw] = useState({ excel: null, notas: null, alias: null });
   const [loading, setLoading] = useState(configured);
   const [search, setSearch] = useState("");
   const [filtro, setFiltro] = useState("ALARMA");
@@ -71,7 +87,9 @@ export default function ContratosModule({ user, role, onBack }) {
   const [rowSel, setRowSel] = useState(null);
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState(null);
-  const [sel, setSel] = useState({});
+  const [exp, setExp] = useState(null); // { q, sel:{key:true}, formato, contenido }
+  const [unir, setUnir] = useState(null); // { src, idx|null, q, dst }
+  const [sugOpen, setSugOpen] = useState(false);
   const [modal, setModal] = useState(null); // { titulo, lineas, avisos, carga? }
   const [busy, setBusy] = useState(false);
   const [nuevo, setNuevo] = useState(null); // { hoja, vals: {key: texto} }
@@ -89,7 +107,7 @@ export default function ContratosModule({ user, role, onBack }) {
     const notas = raw.notas || {};
     return Object.entries(raw.excel?.contratos || {}).map(([key, c]) => {
       const d = desdeDb(key, c);
-      const dias = diasPara(d.fechaFinEfectiva);
+      const dias = diasPara(d.fechaFinVigente);
       return { ...d, nota: notas[key] || {}, dias, alarma: esFinalizado(d.estadoEfectivo) ? "FINAL" : alarmaDe(dias), otrosies: d.filas.filter(esOtrosi).length };
     });
   }, [raw]);
@@ -105,7 +123,7 @@ export default function ContratosModule({ user, role, onBack }) {
     const g = {};
     contratos
       .filter((c) => filtro === "TODOS" || (filtro === "ALARMA" ? CON_ALARMA.includes(c.alarma) : c.alarma === filtro))
-      .filter((c) => !q || [c.contrato, c.hoja, c.base.objeto, c.base.proyecto, c.base.entidad, c.base.nit].some((v) => String(v || "").toLowerCase().includes(q)))
+      .filter((c) => coincide(c, q))
       .forEach((c) => { (g[c.hoja] ||= []).push(c); });
     return Object.entries(g)
       .map(([nombre, rows]) => ({ nombre, rows: rows.sort((a, b) => (a.dias ?? Infinity) - (b.dias ?? Infinity)) }))
@@ -114,12 +132,43 @@ export default function ContratosModule({ user, role, onBack }) {
 
   const meta = raw.excel?._meta;
   const visibles = useMemo(() => grupos.flatMap((g) => g.rows), [grupos]);
-  const seleccionados = useMemo(() => contratos.filter((c) => sel[c.key]), [contratos, sel]);
-  const nSel = seleccionados.length;
+  const sugs = useMemo(() => sugerencias(contratos).filter((s) => !raw.notas?.[s.key]?.ignorarSugerencia), [contratos, raw.notas]);
+  const porKey = useMemo(() => new Map(contratos.map((c) => [c.key, c])), [contratos]);
 
-  const toggleKeys = (keys, on) => setSel((s) => { const n = { ...s }; keys.forEach((k) => { if (on) n[k] = true; else delete n[k]; }); return n; });
+  // Exportar: lista de contratos agrupada por constructora, con búsqueda.
+  const expGrupos = useMemo(() => {
+    if (!exp) return [];
+    const q = exp.q.trim().toLowerCase(), g = {};
+    contratos.filter((c) => coincide(c, q)).sort((a, b) => a.orden - b.orden).forEach((c) => { (g[c.hoja] ||= []).push(c); });
+    return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [exp?.q, contratos]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setSelExp = (keys, on) => setExp((e) => { const s = { ...e.sel }; keys.forEach((k) => { if (on) s[k] = true; else delete s[k]; }); return { ...e, sel: s }; });
+  const nExp = exp ? contratos.filter((c) => exp.sel[c.key]).length : 0;
+  const exportar = () => {
+    exportContratosExcel(contratos.filter((c) => exp.sel[c.key]), { formato: exp.formato, contenido: exp.contenido });
+    setExp(null);
+  };
 
-  // Guarda un campo de una fila al salir de la casilla; vacío borra el valor. Porcentaje se escribe en % y se guarda como fracción.
+  // Unir contratos / mover una fila: un solo update multi-path (filas, alias, comentarios).
+  const ejecutarUnir = async (src, dst, idx) => {
+    setBusy(true);
+    try {
+      const todo = idx == null || porKey.get(src).filas.length < 2;
+      await aplicarCambios(dbRef.current, planMover(raw.excel.contratos, raw.notas || {}, src, dst, idx, () => nuevoId(dbRef.current)));
+      setUnir(null); setSugOpen(false); setRowSel(null);
+      setOpen(dst);
+      showToast(todo ? "Contratos unidos" : "Fila movida");
+    } catch (err) {
+      showToast("No se pudo guardar: " + (err.message || err));
+    }
+    setBusy(false);
+  };
+  const unirSugerido = (s) => {
+    const a = porKey.get(s.key), b = porKey.get(s.destino);
+    if (window.confirm(`¿Unir ${etiqueta(a)} con ${etiqueta(b)}? Sus filas pasan a este último y el primero desaparece.`)) ejecutarUnir(s.key, s.destino, null);
+  };
+
+  // Guarda un campo de una fila al salir de la casilla; vacío borra el valor.
   const guardar = (c, idx, f, txt) => {
     const cur = c.filas[idx][f.key];
     const val = parseCampo(f, txt);
@@ -203,14 +252,15 @@ export default function ContratosModule({ user, role, onBack }) {
     setBusy(true);
     try {
       const { filas, avisos } = leerCuadro(await file.arrayBuffer());
-      const cs = agruparContratos(filas);
       const existentes = raw.excel?.contratos || {};
+      const { cs, unidos } = aplicarAlias(agruparContratos(filas), raw.alias || {}, existentes);
       const act = cs.filter((c) => existentes[c.key]).length;
       const noTocan = Object.keys(existentes).length - act;
       setModal({
         titulo: "Resumen de la carga",
         lineas: [`${cs.length} contratos en el archivo: ${cs.length - act} nuevos · ${act} se actualizarán · ${noTocan} del portal no se tocan`,
-          `${filas.length} filas leídas. Los contratos del archivo reemplazan los del portal; comentarios y fecha de compromiso se conservan.`],
+          `${filas.length} filas leídas. Los contratos del archivo reemplazan los del portal; comentarios y fecha de compromiso se conservan.`,
+          ...(unidos ? [`${unidos} contrato(s) del archivo se unieron a otro por uniones hechas antes en el portal.`] : [])],
         avisos,
         carga: cs.length ? { cs, archivo: file.name, nuevos: cs.length - act, actualizados: act, existentes } : null,
       });
@@ -266,15 +316,16 @@ export default function ContratosModule({ user, role, onBack }) {
             return <div key={f.key}><div style={labelStyle}>{f.h} (calculado)</div><div style={{ padding: "5px 0", color: C.g900 }}>{calc(f, fila)}</div></div>;
           }
           const v = fila[f.key];
-          const shown = f.tipo === "pct" && v !== undefined && v !== null ? Math.round(v * 10000) / 100 : v;
           return (
             <div key={f.key} style={{ gridColumn: f.key === "objeto" ? "1 / -1" : undefined }}>
-              <div style={labelStyle}>{f.h.replace(" mm/aaaa", "")}{f.tipo === "pct" ? " (%)" : ""}</div>
-              <input key={c.key + idx + f.key + String(v)} defaultValue={shown ?? ""}
-                type={f.tipo === "date" ? "date" : f.tipo === "text" ? "text" : "number"} step="any"
-                onBlur={(e) => guardar(c, idx, f, e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
-                style={inputStyle} />
+              <div style={labelStyle}>{f.h.replace(" mm/aaaa", "")}</div>
+              {f.key === "estado" ? <EstadoSelect value={v} onChange={(x) => guardar(c, idx, f, x)} /> : (
+                <input key={c.key + idx + f.key + String(v)} defaultValue={v ?? ""}
+                  type={f.tipo === "date" ? "date" : f.tipo === "text" ? "text" : "number"} step="any"
+                  onBlur={(e) => guardar(c, idx, f, e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                  style={inputStyle} />
+              )}
             </div>
           );
         })}
@@ -315,22 +366,22 @@ export default function ContratosModule({ user, role, onBack }) {
               {busy ? "Procesando…" : "⬆ Subir Excel"}
             </button>
             <button onClick={() => setNuevo({ hoja: "", vals: {} })} disabled={busy || !configured} style={actionBtn}>＋ Nuevo contrato</button>
-            <button onClick={() => exportContratosExcel(nSel ? seleccionados : visibles)} disabled={!(nSel || visibles.length)} style={actionBtn}>
-              {nSel ? `⬇ Exportar (${nSel})` : "⬇ Exportar Excel"}
+            <button onClick={() => setExp({ q: "", sel: Object.fromEntries(visibles.map((c) => [c.key, true])), formato: "hoja", contenido: "completo" })} disabled={!contratos.length} style={actionBtn}>
+              ⬇ Exportar Excel
             </button>
           </div>
         </div>
 
-        <div className="filter-chips" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="filter-chips" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
           <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1, color: C.g500, textTransform: "uppercase", marginRight: 4 }}>Filtrar:</span>
           {FILTROS.map(([k, l]) => (
             <button key={k} style={filterBtn(k)} onClick={() => setFiltro(k)}>{l} ({counts[k]})</button>
           ))}
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <button style={actionBtn} onClick={() => toggleKeys(visibles.map((c) => c.key), true)} disabled={!visibles.length}>Seleccionar visibles</button>
-          <button style={actionBtn} onClick={() => setSel({})} disabled={!nSel}>Limpiar</button>
-          <span style={{ fontSize: 11, color: C.g500 }}>{nSel ? `${nSel} seleccionados: el botón exporta solo esos` : "Sin selección: el botón exporta lo visible"}</span>
+          {sugs.length > 0 && (
+            <button style={{ ...filterBtn(""), marginLeft: 8, color: "#a16207", background: "#fefce8", boxShadow: "inset 0 0 0 1px #a16207" }} onClick={() => setSugOpen(true)}>
+              Sugerencias de corrección ({sugs.length})
+            </button>
+          )}
         </div>
 
         {!configured ? (
@@ -346,13 +397,10 @@ export default function ContratosModule({ user, role, onBack }) {
             const isCol = collapsed[g.nombre];
             const gc = {};
             g.rows.forEach((r) => { gc[r.alarma] = (gc[r.alarma] || 0) + 1; });
-            const todos = g.rows.every((r) => sel[r.key]);
             return (
               <div key={g.nombre} style={{ background: C.white, border: `1px solid ${C.g200}`, borderRadius: 6, marginBottom: 12, overflowX: "auto" }}>
                 <div onClick={() => setCollapsed((s) => ({ ...s, [g.nombre]: !s[g.nombre] }))}
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", background: C.g100 }}>
-                  <input type="checkbox" checked={todos} title="Seleccionar todos los contratos del grupo"
-                    onClick={(e) => e.stopPropagation()} onChange={(e) => toggleKeys(g.rows.map((r) => r.key), e.target.checked)} />
                   <span style={{ fontSize: 11, color: C.g500 }}>{isCol ? "▶" : "▼"}</span>
                   <strong style={{ fontSize: 13, color: C.navy }}>{g.nombre}</strong>
                   <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>{g.rows[0].base.entidad}</span>
@@ -366,7 +414,7 @@ export default function ContratosModule({ user, role, onBack }) {
                 {!isCol && (
                   <div style={{ minWidth: 980 }}>
                     <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "6px 14px", fontSize: 10, fontWeight: 700, color: C.g500, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.g200}` }}>
-                      <span /><span>Contrato</span><span>Proyecto</span><span>Objeto</span><span>Estado</span><span>Valor</span><span>Fecha fin</span><span>Días</span><span>Otrosíes</span><span>Alarma</span>
+                      <span>Contrato</span><span>Proyecto</span><span>Objeto</span><span>Estado</span><span title="Valor vigente (último otrosí/liquidación que modifica VALOR)">Valor</span><span title="Fecha fin vigente (último otrosí/liquidación que modifica TIEMPO)">Fecha fin</span><span>Días</span><span>Otrosíes</span><span>Alarma</span>
                     </div>
                     {g.rows.map((c) => {
                       const isOpen = open === c.key;
@@ -375,13 +423,12 @@ export default function ContratosModule({ user, role, onBack }) {
                         <div key={c.key} style={{ borderBottom: `1px solid ${C.g100}` }}>
                           <div onClick={() => { setOpen(isOpen ? null : c.key); setRowSel(null); setDraft(""); }}
                             style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "8px 14px", fontSize: 12, color: C.g900, cursor: "pointer", alignItems: "center", background: isOpen ? C.blueL : "transparent" }}>
-                            <input type="checkbox" checked={!!sel[c.key]} onClick={(e) => e.stopPropagation()} onChange={(e) => toggleKeys([c.key], e.target.checked)} />
                             <span style={ellipsis}>{c.contrato || "—"}</span>
                             <span style={{ fontWeight: 600, ...ellipsis }} title={c.base.proyecto}>{c.base.proyecto || "—"}</span>
                             <span style={ellipsis} title={c.base.objeto}>{c.base.objeto || "—"}</span>
                             <span style={ellipsis}>{c.estadoEfectivo || "—"}</span>
-                            <span>{c.base.valor != null ? fmt(c.base.valor) : "—"}</span>
-                            <span>{c.fechaFinEfectiva || "—"}</span>
+                            <span>{c.valorVigente != null ? fmt(c.valorVigente) : "—"}</span>
+                            <span>{c.fechaFinVigente || "—"}</span>
                             <span style={{ color: ALARMAS[c.alarma].color, fontWeight: 700 }}>{c.dias ?? "—"}</span>
                             <span>{c.otrosies}</span>
                             <span>{badge(c.alarma)}</span>
@@ -391,7 +438,7 @@ export default function ContratosModule({ user, role, onBack }) {
                               <div style={{ border: `1px solid ${C.g200}`, borderRadius: 4, background: C.white, overflowX: "auto" }}>
                                 <div style={{ minWidth: 700 }}>
                                   <div style={{ display: "grid", gridTemplateColumns: SUBCOLS, gap: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, color: C.g500, textTransform: "uppercase", borderBottom: `1px solid ${C.g200}` }}>
-                                    <span>Tipo</span><span>Objeto</span><span>Valor</span><span>Inicio</span><span>Fin</span><span>Estado</span>
+                                    <span>Tipo</span><span>Objeto</span><span>Valor</span><span>Inicio</span><span>Fin</span><span>Estado</span><span>Modifica</span>
                                   </div>
                                   {c.filas.map((f, i) => (
                                     <div key={i} onClick={() => setRowSel(rowSel === i ? null : i)}
@@ -401,7 +448,12 @@ export default function ContratosModule({ user, role, onBack }) {
                                       <span>{f.valor != null ? fmt(f.valor) : "—"}</span>
                                       <span>{f.fechaInicio || "—"}</span>
                                       <span>{f.fechaFin || "—"}</span>
-                                      <span>{f.estado || "—"}{f.pct != null ? ` · ${pct(f.pct)}` : ""}</span>
+                                      <span>{f.estado || "—"}</span>
+                                      {esBase(f) ? <span>—</span> : (
+                                        <select value={f.modifica} onClick={(e) => e.stopPropagation()} onChange={(e) => setCampoFila(dbRef.current, c.key, i, "modifica", e.target.value)} style={{ ...inputStyle, padding: "2px 4px" }}>
+                                          {MODIFICA.map((m) => <option key={m}>{m}</option>)}
+                                        </select>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -411,6 +463,7 @@ export default function ContratosModule({ user, role, onBack }) {
                                 <select value={tipoNueva} onChange={(e) => setTipoNueva(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
                                   <option>OTROSÍ</option><option>LIQUIDACIÓN</option>
                                 </select>
+                                {rowSel !== null && <button onClick={() => setUnir({ src: c.key, idx: rowSel, q: "", dst: null })} style={actionBtn}>Mover esta fila…</button>}
                               </div>
                               {rowSel !== null && renderForm(c, rowSel)}
                               <div style={{ margin: "12px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -418,7 +471,8 @@ export default function ContratosModule({ user, role, onBack }) {
                                 <input type="date" value={c.nota.fechaCompromiso || ""}
                                   onChange={(e) => setFechaCompromiso(dbRef.current, c.key, e.target.value)}
                                   style={{ fontSize: 12, padding: "6px 8px", border: `1px solid ${C.g200}`, borderRadius: 4, outline: "none" }} />
-                                <button onClick={() => borrar(c)} style={{ ...actionBtn, marginLeft: "auto", color: C.red, borderColor: C.red }}>Eliminar contrato</button>
+                                <button onClick={() => setUnir({ src: c.key, idx: null, q: "", dst: null })} style={{ ...actionBtn, marginLeft: "auto" }}>Unir a otro contrato…</button>
+                                <button onClick={() => borrar(c)} style={{ ...actionBtn, color: C.red, borderColor: C.red }}>Eliminar contrato</button>
                               </div>
                               <div style={{ fontSize: 11, fontWeight: 600, color: C.g500, textTransform: "uppercase", marginBottom: 6 }}>Comentarios</div>
                               {Object.values(c.nota.comentarios || {}).sort((a, b) => (a.at || "").localeCompare(b.at || "")).map((m, i) => (
@@ -447,8 +501,8 @@ export default function ContratosModule({ user, role, onBack }) {
       </div>
 
       {modal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 }}>
-          <div style={{ background: C.white, borderRadius: 8, padding: 20, maxWidth: 560, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+        <div style={overlay}>
+          <div style={{ ...dialog, maxWidth: 560 }}>
             <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>{modal.titulo}</h2>
             {modal.lineas.map((l, i) => <p key={i} style={{ fontSize: 12, color: C.g900, margin: "0 0 8px" }}>{l}</p>)}
             {modal.avisos?.length > 0 && (
@@ -466,8 +520,8 @@ export default function ContratosModule({ user, role, onBack }) {
       )}
 
       {nuevo && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 }}>
-          <div style={{ background: C.white, borderRadius: 8, padding: 20, maxWidth: 820, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={overlay}>
+          <div style={{ ...dialog, maxWidth: 820 }}>
             <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>Nuevo contrato</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
               <div>
@@ -477,15 +531,123 @@ export default function ContratosModule({ user, role, onBack }) {
               </div>
               {CAMPOS.filter((f) => f.tipo !== "calc" && f.key !== "tipo").map((f) => (
                 <div key={f.key} style={{ gridColumn: f.key === "objeto" ? "1 / -1" : undefined }}>
-                  <div style={labelStyle}>{f.h.replace(" mm/aaaa", "")}{f.tipo === "pct" ? " (%)" : ""}{f.key === "contrato" ? " *" : ""}</div>
-                  <input value={nuevo.vals[f.key] || ""} onChange={(e) => setNuevo({ ...nuevo, vals: { ...nuevo.vals, [f.key]: e.target.value } })}
-                    type={f.tipo === "date" ? "date" : f.tipo === "text" ? "text" : "number"} step="any" style={inputStyle} />
+                  <div style={labelStyle}>{f.h.replace(" mm/aaaa", "")}{f.key === "contrato" ? " *" : ""}</div>
+                  {f.key === "estado" ? <EstadoSelect value={nuevo.vals.estado} onChange={(x) => setNuevo({ ...nuevo, vals: { ...nuevo.vals, estado: x } })} /> : (
+                    <input value={nuevo.vals[f.key] || ""} onChange={(e) => setNuevo({ ...nuevo, vals: { ...nuevo.vals, [f.key]: e.target.value } })}
+                      type={f.tipo === "date" ? "date" : f.tipo === "text" ? "text" : "number"} step="any" style={inputStyle} />
+                  )}
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
               <button style={actionBtn} onClick={() => setNuevo(null)}>Cancelar</button>
               <button style={{ ...actionBtn, background: C.accent, color: C.white, borderColor: C.accent }} disabled={busy} onClick={guardarNuevo}>Crear</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exp && (
+        <div style={overlay}>
+          <div style={{ ...dialog, maxWidth: 760 }}>
+            <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>Exportar a Excel</h2>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+              <label style={{ fontSize: 12 }}><div style={labelStyle}>Formato</div>
+                <select value={exp.formato} onChange={(e) => setExp({ ...exp, formato: e.target.value })} style={{ ...inputStyle, width: "auto" }}>
+                  <option value="hoja">Una hoja por constructora</option><option value="unica">Una sola hoja</option>
+                </select></label>
+              <label style={{ fontSize: 12 }}><div style={labelStyle}>Contenido</div>
+                <select value={exp.contenido} onChange={(e) => setExp({ ...exp, contenido: e.target.value })} style={{ ...inputStyle, width: "auto" }}>
+                  <option value="completo">Contrato con otrosíes y liquidaciones</option><option value="general">Solo el contrato general</option>
+                </select></label>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+              <input value={exp.q} onChange={(e) => setExp({ ...exp, q: e.target.value })} placeholder="Buscar contrato, objeto, proyecto..." style={{ ...inputStyle, width: 240 }} />
+              <button style={actionBtn} onClick={() => setSelExp(contratos.map((c) => c.key), true)}>Todos</button>
+              <button style={actionBtn} onClick={() => setExp({ ...exp, sel: {} })}>Ninguno</button>
+              <button style={actionBtn} onClick={() => setExp({ ...exp, sel: Object.fromEntries(visibles.map((c) => [c.key, true])) })}>Solo los visibles con el filtro actual</button>
+            </div>
+            <div style={{ border: `1px solid ${C.g200}`, borderRadius: 4, maxHeight: "45vh", overflowY: "auto", fontSize: 12 }}>
+              {expGrupos.length === 0 && <div style={{ padding: 12, color: C.g500 }}>Sin resultados.</div>}
+              {expGrupos.map(([hoja, rows]) => (
+                <div key={hoja}>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", background: C.g100, fontWeight: 700, color: C.navy, position: "sticky", top: 0 }}>
+                    <input type="checkbox" checked={rows.every((r) => exp.sel[r.key])} onChange={(e) => setSelExp(rows.map((r) => r.key), e.target.checked)} />
+                    {hoja} <span style={{ fontWeight: 400, color: C.g500 }}>({rows.filter((r) => exp.sel[r.key]).length}/{rows.length})</span>
+                  </label>
+                  {rows.map((r) => (
+                    <label key={r.key} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 10px 3px 28px", borderBottom: `1px solid ${C.g100}` }}>
+                      <input type="checkbox" checked={!!exp.sel[r.key]} onChange={(e) => setSelExp([r.key], e.target.checked)} />
+                      <span style={{ minWidth: 120, fontWeight: 600 }}>{r.contrato || "—"}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.g700 }}>{r.base.proyecto || r.base.objeto || ""}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+              <button style={actionBtn} onClick={() => setExp(null)}>Cancelar</button>
+              <button style={{ ...actionBtn, ...primario, opacity: nExp ? 1 : 0.5 }} disabled={!nExp} onClick={exportar}>Exportar ({nExp} contratos)</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {unir && (() => {
+        const src = porKey.get(unir.src), q = unir.q.trim().toLowerCase();
+        if (!src) return null;
+        const fila = unir.idx != null && src.filas.length > 1 ? src.filas[unir.idx] : null;
+        const lista = contratos.filter((c) => c.key !== unir.src && coincide(c, q))
+          .sort((a, b) => (b.hoja === src.hoja) - (a.hoja === src.hoja) || a.hoja.localeCompare(b.hoja) || a.orden - b.orden).slice(0, 100);
+        return (
+          <div style={overlay}>
+            <div style={{ ...dialog, maxWidth: 680 }}>
+              <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 4px" }}>{fila ? "Mover esta fila a otro contrato" : "Unir a otro contrato"}</h2>
+              <p style={{ fontSize: 12, color: C.g700, margin: "0 0 8px" }}>
+                {fila ? `Fila "${fila.tipo && fila.tipo !== "---" ? fila.tipo : "Contrato"}" de ` : "Todas las filas de "}<strong>{etiqueta(src)}</strong>
+                {fila ? " pasa al contrato elegido." : " pasan al contrato elegido y este desaparece (las próximas cargas del Excel lo seguirán uniendo)."}
+              </p>
+              <input autoFocus value={unir.q} onChange={(e) => setUnir({ ...unir, q: e.target.value })} placeholder="Buscar contrato, objeto, proyecto..." style={{ ...inputStyle, marginBottom: 8 }} />
+              <div style={{ border: `1px solid ${C.g200}`, borderRadius: 4, maxHeight: "45vh", overflowY: "auto", fontSize: 12 }}>
+                {lista.length === 0 && <div style={{ padding: 12, color: C.g500 }}>Sin resultados.</div>}
+                {lista.map((c) => (
+                  <label key={c.key} style={{ display: "grid", gridTemplateColumns: "20px 120px 1fr 1fr", gap: 8, padding: "5px 10px", cursor: "pointer", alignItems: "center", background: unir.dst === c.key ? C.blueL : "transparent", borderBottom: `1px solid ${C.g100}` }}>
+                    <input type="radio" checked={unir.dst === c.key} onChange={() => setUnir({ ...unir, dst: c.key })} />
+                    <span style={{ fontWeight: 600 }}>{c.contrato || "—"}{c.hoja !== src.hoja && <div style={{ fontWeight: 400, fontSize: 10, color: C.g500 }}>{c.hoja}</div>}</span>
+                    <span title={c.base.objeto} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.base.objeto || "—"}</span>
+                    <span title={c.base.proyecto} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.g700 }}>{c.base.proyecto || "—"}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                <button style={actionBtn} onClick={() => setUnir(null)}>Cancelar</button>
+                <button style={{ ...actionBtn, ...primario, opacity: unir.dst ? 1 : 0.5 }} disabled={!unir.dst || busy} onClick={() => ejecutarUnir(unir.src, unir.dst, unir.idx)}>{fila ? "Mover fila" : "Unir"}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {sugOpen && (
+        <div style={overlay}>
+          <div style={{ ...dialog, maxWidth: 760 }}>
+            <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>Sugerencias de corrección ({sugs.length})</h2>
+            {sugs.length === 0 && <p style={{ fontSize: 12, color: C.g500 }}>No quedan sugerencias.</p>}
+            {sugs.map((s) => {
+              const a = porKey.get(s.key), b = porKey.get(s.destino);
+              return (
+                <div key={s.key} style={{ border: `1px solid ${C.g200}`, borderRadius: 4, padding: "8px 10px", marginBottom: 8, fontSize: 12 }}>
+                  <div><strong>{etiqueta(a)}</strong> <span style={{ color: C.g500 }}>{a.base.proyecto || a.base.objeto || ""} · {a.filas.length} fila(s)</span></div>
+                  <div style={{ color: C.g700, margin: "2px 0 6px" }}>{s.razon} → <strong>{etiqueta(b)}</strong></div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button style={{ ...actionBtn, ...primario }} disabled={busy} onClick={() => unirSugerido(s)}>Unir con {b.contrato || "(sin número)"}</button>
+                    <button style={actionBtn} onClick={() => ignorarSugerencia(dbRef.current, s.key)}>Ignorar</button>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <button style={actionBtn} onClick={() => setSugOpen(false)}>Cerrar</button>
             </div>
           </div>
         </div>
