@@ -166,6 +166,21 @@ export function desdeDb(key, c) {
   return armarContrato(key, c.hoja, c.contrato, c.orden ?? 0, filas.filter(Boolean));
 }
 
+// `orden` para un contrato nuevo: al final de su hoja, o al final de todo (+10000) si la hoja es nueva.
+// contratos = [{hoja, orden}] (los de RTDB).
+export function siguienteOrden(contratos, hoja) {
+  const ords = contratos.filter((c) => norm(c.hoja) === norm(hoja)).map((c) => c.orden ?? 0);
+  if (ords.length) return Math.max(...ords) + 1;
+  return Math.max(0, ...contratos.map((c) => c.orden ?? 0)) + 10000 + 1;
+}
+
+// Fila nueva (otrosí/liquidación) copiando los campos identificadores de la fila base.
+export function filaNueva(base, filas, liquidacion) {
+  const f = { tipo: liquidacion ? "LIQUIDACIÓN" : `OTROSÍ No. ${filas.filter(esOtrosi).length + 1}` };
+  for (const k of ["encargado", "entidad", "nit", "proyecto", "direccion", "localizacion", "contrato"]) if (base[k]) f[k] = base[k];
+  return f;
+}
+
 // Días entre dos "YYYY-MM-DD" (null si falta alguno).
 export function diasEntre(ini, fin) {
   if (!ini || !fin) return null;

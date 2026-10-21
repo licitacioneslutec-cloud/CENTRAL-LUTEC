@@ -27,6 +27,16 @@ export function setCampoFila(db, key, idx, campo, value) {
   return update(ref(db, `contratosExcel/contratos/${key}/filas/${idx}`), { [campo]: value === "" || value === undefined ? null : value });
 }
 
+// Crea un contrato nuevo (set en su ruta; el llamador ya verificó que la clave no existe).
+export function crearContrato(db, key, data) {
+  return set(ref(db, `contratosExcel/contratos/${key}`), data);
+}
+
+// Agrega una fila (otrosí/liquidación) en la posición idx = largo actual de filas.
+export function agregarFila(db, key, idx, fila) {
+  return set(ref(db, `contratosExcel/contratos/${key}/filas/${idx}`), fila);
+}
+
 export function eliminarContrato(db, key) {
   return remove(ref(db, `contratosExcel/contratos/${key}`));
 }

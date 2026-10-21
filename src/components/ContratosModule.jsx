@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C } from "../constants";
 import { isFirebaseConfigured, initFirebase } from "../firebase";
-import { subscribeContratos, addComentario, setFechaCompromiso, guardarCarga, setCampoFila, eliminarContrato } from "../contratosFirebase";
+import { subscribeContratos, addComentario, setFechaCompromiso, guardarCarga, setCampoFila, eliminarContrato, crearContrato, agregarFila } from "../contratosFirebase";
 import { fmt, exportContratosExcel } from "../utils";
-import { CAMPOS, leerCuadro, agruparContratos, desdeDb, esOtrosi, esFinalizado, diasEntre } from "../contratosExcel";
+import { CAMPOS, leerCuadro, agruparContratos, desdeDb, esOtrosi, esFinalizado, diasEntre, contratoKey, siguienteOrden, filaNueva } from "../contratosExcel";
 import SearchBar from "./SearchBar";
 
 const MAX_MB = 20;
@@ -40,6 +40,14 @@ function alarmaDe(dias) {
 
 const labelStyle = { fontSize: 10, fontWeight: 600, color: C.g500, textTransform: "uppercase" };
 const inputStyle = { width: "100%", boxSizing: "border-box", fontSize: 12, padding: "5px 7px", border: `1px solid ${C.g200}`, borderRadius: 4, outline: "none" };
+// Texto de una casilla -> valor guardable (null = vacío, undefined = número inválido). % se escribe en % y se guarda como fracción.
+function parseCampo(f, txt) {
+  const t = txt.trim();
+  if (t === "") return null;
+  if (f.tipo !== "number" && f.tipo !== "pct") return t;
+  const n = Number(t.replace(",", "."));
+  return isNaN(n) ? undefined : f.tipo === "pct" ? n / 100 : n;
+}
 const pct = (v) => (v === undefined || v === null || v === "" ? "—" : Math.round(Number(v) * 100) + "%");
 const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -66,6 +74,8 @@ export default function ContratosModule({ user, role, onBack }) {
   const [sel, setSel] = useState({});
   const [modal, setModal] = useState(null); // { titulo, lineas, avisos, carga? }
   const [busy, setBusy] = useState(false);
+  const [nuevo, setNuevo] = useState(null); // { hoja, vals: {key: texto} }
+  const [tipoNueva, setTipoNueva] = useState("OTROSÍ");
 
   useEffect(() => {
     if (!configured) return;
@@ -111,19 +121,61 @@ export default function ContratosModule({ user, role, onBack }) {
 
   // Guarda un campo de una fila al salir de la casilla; vacío borra el valor. Porcentaje se escribe en % y se guarda como fracción.
   const guardar = (c, idx, f, txt) => {
-    const t = txt.trim();
     const cur = c.filas[idx][f.key];
-    let val = t === "" ? null : t;
-    if (val !== null && (f.tipo === "number" || f.tipo === "pct")) {
-      val = Number(t.replace(",", "."));
-      if (isNaN(val)) return;
-      if (f.tipo === "pct") val = val / 100;
-    }
-    if (val === (cur ?? null)) return;
+    const val = parseCampo(f, txt);
+    if (val === undefined || val === (cur ?? null)) return;
     setCampoFila(dbRef.current, c.key, idx, f.key, val);
   };
 
-  const comentar = (c) => {
+  const hojas = useMemo(() => [...new Set(contratos.map((c) => c.hoja))].sort((a, b) => a.localeCompare(b)), [contratos]);
+
+  // Al elegir una hoja existente, precarga ENCARGADO/ENTIDAD/NIT del primer contrato de esa hoja (solo casillas vacías).
+  const cambiaNuevo = (hoja, vals) => {
+    const prev = contratos.filter((c) => c.hoja === hoja).sort((a, b) => a.orden - b.orden)[0];
+    const v = { ...vals };
+    if (prev) ["encargado", "entidad", "nit"].forEach((k) => { if (!v[k] && prev.base[k]) v[k] = String(prev.base[k]); });
+    setNuevo({ hoja, vals: v });
+  };
+
+  const guardarNuevo = async () => {
+    const hoja = nuevo.hoja.trim();
+    const fila = { tipo: "---" };
+    for (const f of CAMPOS) {
+      if (f.tipo === "calc" || f.key === "tipo") continue;
+      const val = parseCampo(f, nuevo.vals[f.key] || "");
+      if (val === undefined) return showToast(`Valor inválido en ${f.h}`);
+      if (val !== null) fila[f.key] = val;
+    }
+    if (!hoja || (!fila.contrato && !fila.objeto)) return showToast("Falta la hoja y el CONTRATO (u OBJETO si no hay número)");
+    const key = contratoKey(hoja, fila);
+    const existentes = raw.excel?.contratos || {};
+    if (existentes[key]) return showToast(`El contrato ya existe en ${hoja}; ábrelo y agrega un otrosí`);
+    setBusy(true);
+    try {
+      const orden = siguienteOrden(Object.values(existentes), hoja);
+      await crearContrato(dbRef.current, key, { hoja, contrato: fila.contrato || "", orden, actualizadoAt: new Date().toISOString(), actualizadoPor: user.name, archivo: "portal", filas: [fila] });
+      setNuevo(null);
+      setFiltro("TODOS"); setSearch(""); setCollapsed((s) => ({ ...s, [hoja]: false }));
+      setOpen(key); setRowSel(null);
+      showToast("Contrato creado");
+    } catch (err) {
+      showToast("No se pudo guardar: " + (err.message || err));
+    }
+    setBusy(false);
+  };
+
+  const nuevaFila = async (c) => {
+    const rawF = raw.excel?.contratos?.[c.key]?.filas;
+    const idx = Array.isArray(rawF) ? rawF.length : Math.max(-1, ...Object.keys(rawF || {}).map(Number)) + 1;
+    try {
+      await agregarFila(dbRef.current, c.key, idx, filaNueva(c.base, c.filas, tipoNueva === "LIQUIDACIÓN"));
+      setRowSel(c.filas.length); // la fila nueva queda al final (desdeDb descarta huecos)
+    } catch (err) {
+      showToast("No se pudo agregar: " + (err.message || err));
+    }
+  };
+
+  const comentar =(c) => {
     if (!draft.trim()) return;
     addComentario(dbRef.current, c.key, { texto: draft.trim(), autor: user.name, at: new Date().toISOString() });
     setDraft("");
@@ -262,6 +314,7 @@ export default function ContratosModule({ user, role, onBack }) {
               style={{ ...actionBtn, background: busy ? C.g100 : C.accent, color: C.white, borderColor: C.accent }}>
               {busy ? "Procesando…" : "⬆ Subir Excel"}
             </button>
+            <button onClick={() => setNuevo({ hoja: "", vals: {} })} disabled={busy || !configured} style={actionBtn}>＋ Nuevo contrato</button>
             <button onClick={() => exportContratosExcel(nSel ? seleccionados : visibles)} disabled={!(nSel || visibles.length)} style={actionBtn}>
               {nSel ? `⬇ Exportar (${nSel})` : "⬇ Exportar Excel"}
             </button>
@@ -353,6 +406,12 @@ export default function ContratosModule({ user, role, onBack }) {
                                   ))}
                                 </div>
                               </div>
+                              <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+                                <button onClick={() => nuevaFila(c)} style={actionBtn}>＋ Agregar otrosí / liquidación</button>
+                                <select value={tipoNueva} onChange={(e) => setTipoNueva(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
+                                  <option>OTROSÍ</option><option>LIQUIDACIÓN</option>
+                                </select>
+                              </div>
                               {rowSel !== null && renderForm(c, rowSel)}
                               <div style={{ margin: "12px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                 <span style={{ fontSize: 11, fontWeight: 600, color: C.g500, textTransform: "uppercase" }}>Fecha de compromiso:</span>
@@ -401,6 +460,32 @@ export default function ContratosModule({ user, role, onBack }) {
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
               <button style={actionBtn} onClick={() => setModal(null)}>{modal.carga ? "Cancelar" : "Cerrar"}</button>
               {modal.carga && <button style={{ ...actionBtn, background: C.accent, color: C.white, borderColor: C.accent }} onClick={confirmarCarga}>Actualizar</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {nuevo && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 }}>
+          <div style={{ background: C.white, borderRadius: 8, padding: 20, maxWidth: 820, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>Nuevo contrato</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
+              <div>
+                <div style={labelStyle}>Hoja / constructora *</div>
+                <input list="hojas-contratos" value={nuevo.hoja} onChange={(e) => cambiaNuevo(e.target.value, nuevo.vals)} style={inputStyle} />
+                <datalist id="hojas-contratos">{hojas.map((h) => <option key={h} value={h} />)}</datalist>
+              </div>
+              {CAMPOS.filter((f) => f.tipo !== "calc" && f.key !== "tipo").map((f) => (
+                <div key={f.key} style={{ gridColumn: f.key === "objeto" ? "1 / -1" : undefined }}>
+                  <div style={labelStyle}>{f.h.replace(" mm/aaaa", "")}{f.tipo === "pct" ? " (%)" : ""}{f.key === "contrato" ? " *" : ""}</div>
+                  <input value={nuevo.vals[f.key] || ""} onChange={(e) => setNuevo({ ...nuevo, vals: { ...nuevo.vals, [f.key]: e.target.value } })}
+                    type={f.tipo === "date" ? "date" : f.tipo === "text" ? "text" : "number"} step="any" style={inputStyle} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+              <button style={actionBtn} onClick={() => setNuevo(null)}>Cancelar</button>
+              <button style={{ ...actionBtn, background: C.accent, color: C.white, borderColor: C.accent }} disabled={busy} onClick={guardarNuevo}>Crear</button>
             </div>
           </div>
         </div>

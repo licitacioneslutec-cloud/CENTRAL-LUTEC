@@ -1,7 +1,7 @@
 // Prueba: node src/contratosExcel.check.js
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
-import { CAMPOS, leerCuadro, agruparContratos, construirLibro, contratoKey, esFinalizado } from "./contratosExcel.js";
+import { CAMPOS, leerCuadro, agruparContratos, construirLibro, contratoKey, esFinalizado, siguienteOrden, filaNueva, armarContrato } from "./contratosExcel.js";
 
 const H = CAMPOS.map((f) => f.h);
 const libro = (hojas) => {
@@ -68,5 +68,15 @@ assert.deepEqual(strip(r2.filas), strip(r.filas), "export reimporta limpio");
 assert.deepEqual(agruparContratos(r2.filas).map((c) => c.key), cs.map((c) => c.key));
 const ws = wb2.Sheets.ACME;
 assert.equal(ws.O2, undefined, "sin fecha inicio no hay fórmulas");
+
+// Contratos nuevos desde el portal
+const dbc = [{ hoja: "ACME", orden: 5 }, { hoja: "ACME", orden: 9 }, { hoja: "BETA", orden: 10003 }];
+assert.equal(siguienteOrden(dbc, "acme"), 10, "al final de su hoja");
+assert.equal(siguienteOrden(dbc, "NUEVA"), 20004, "hoja nueva: después de todo");
+const fn = filaNueva({ entidad: "E", contrato: "CO 1", valor: 5 }, [{}, { tipo: "OTROSÍ No. 1" }], false);
+assert.deepEqual(fn, { tipo: "OTROSÍ No. 2", entidad: "E", contrato: "CO 1" });
+assert.equal(filaNueva({}, [], true).tipo, "LIQUIDACIÓN");
+const nuevo = { hoja: "NUEVA", orden: 1, filas: [{ contrato: "X.1", tipo: "---" }, fn] };
+assert.equal(construirLibro([armarContrato("k", "NUEVA", "X.1", 1, nuevo.filas)]).SheetNames[0], "NUEVA");
 
 console.log("contratosExcel.check OK");
