@@ -32,7 +32,7 @@ export const CAMPOS = [
 // Columnas fuera de CAMPOS: MODIFICA (última del export) y HOJA (primera, solo en el export de una sola hoja).
 const MOD = { key: "modifica", h: "MODIFICA", tipo: "text", w: 16 };
 const HOJA = { key: "_hoja", h: "HOJA", tipo: "text", w: 22 };
-export const ESTADOS = ["EN EJECUCIÓN", "FINALIZADO", "EN LIQUIDACIÓN"];
+export const ESTADOS = ["EN EJECUCIÓN", "RENOVADO", "EN LIQUIDACIÓN", "FINALIZADO"];
 export const MODIFICA = ["TIEMPO", "VALOR", "TIEMPO Y VALOR"];
 
 const sinTilde = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");

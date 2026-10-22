@@ -48,7 +48,7 @@ function parseCampo(f, txt) {
   const n = Number(t.replace(",", "."));
   return isNaN(n) ? undefined : n;
 }
-// Estado de la obra: solo los 3 valores; uno distinto (RENOVADO, número...) se ve como "(actual: X)" hasta que alguien lo cambie.
+// Estado de la obra: solo los valores de ESTADOS; uno distinto (vacío, número...) se ve como "(actual: X)" hasta que alguien lo cambie.
 // "EN EJECUCION" sin tilde cuenta como "EN EJECUCIÓN".
 const EstadoSelect = ({ value, onChange }) => {
   const v = ESTADOS.find((e) => norm(e) === norm(value ?? "")) ?? value ?? "";
