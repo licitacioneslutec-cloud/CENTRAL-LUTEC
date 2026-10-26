@@ -14,9 +14,10 @@ export default function Portal({ user, onNavigate, onLogout }) {
   const visibleDepts = DEPARTMENTS.map((dept) => ({
     ...dept,
     modules: dept.modules.filter((mod) => {
+      if (user.role === "ingenieria") return mod.type === "internal" && !!mod.roles?.includes("ingenieria"); // solo Contratos
       if (mod.type === "external") return true;
       if (user.role === "admin") return true;
-      return mod.role === user.role;
+      return (mod.roles || [mod.role]).includes(user.role);
     }),
   })).filter((dept) => dept.modules.length > 0);
 

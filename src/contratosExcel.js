@@ -84,7 +84,7 @@ function aValor(f, v) {
 // filas: [{ hoja, orden, ...campos }] solo con campos no vacíos. Encabezados por nombre, nunca por posición.
 export function leerCuadro(buf) {
   const wb = XLSX.read(buf, { type: "array", cellDates: true, sheetRows: 2000 });
-  const filas = [], hojas = [], avisos = [];
+  const filas = [], hojas = [], avisos = [], sinHoja = [];
   wb.SheetNames.forEach((name, si) => {
     const hoja = name.trim();
     if (/^(PLANTILLA|SMMLV)$/i.test(hoja)) { avisos.push(`Hoja "${hoja}" omitida (no es una constructora).`); return; }
@@ -116,10 +116,10 @@ export function leerCuadro(buf) {
       filas.push(fila); n++;
     }
     if (cols.some(([, f]) => f === HOJA)) new Set(filas.slice(ini).map((f) => f.hoja)).forEach((h) => hojas.push(h));
-    else hojas.push(hoja);
+    else { hojas.push(hoja); sinHoja.push(hoja); filas.slice(ini).forEach((f) => { f._sinHoja = true; }); } // sin columna HOJA: ver ubicarHojas
     if (!n) avisos.push(`Hoja "${hoja}": sin filas de datos.`);
   });
-  return { filas, hojas, avisos };
+  return { filas, hojas, avisos, sinHoja };
 }
 
 // ─── Contratos ───
@@ -169,12 +169,39 @@ export function armarContrato(key, hoja, contrato, orden, filas) {
 // Agrupa filas por hoja + contrato canónico; filas en orden de aparición. La clave es la de la primera fila del grupo.
 export function agruparContratos(filas) {
   const m = new Map();
-  for (const { hoja, orden, ...campos } of filas) {
+  for (const { hoja, orden, _sinHoja, ...campos } of filas) {
     const g = grupoId(hoja, campos);
     if (!m.has(g)) m.set(g, { key: contratoKey(hoja, campos), hoja, contrato: campos.contrato || "", orden, filas: [] });
     m.get(g).filas.push(campos);
   }
   return [...m.values()].map((c) => armarContrato(c.key, c.hoja, c.contrato, c.orden, c.filas));
+}
+
+// Archivo sin columna HOJA (p. ej. export "una sola hoja" al que se le borró HOJA): la hoja del Excel ("Contratos") no es una
+// constructora. Para cada fila _sinHoja cuyo nombre de hoja no es una hoja existente, busca el contrato por número canónico
+// entre existentes ({key,hoja,contrato}), sin contar los de la hoja con ese mismo nombre. Una sola hoja candidata → fila.hoja.
+// Las filas ubicadas (o de una hoja conocida) pierden _sinHoja; las no resueltas lo conservan. No muta la entrada.
+// "Contratos" es el nombre de la hoja del export "una sola hoja": nunca cuenta como constructora conocida (en prod ya existe por el error).
+export const hojasConocidas = (existentes) => new Set(existentes.map((e) => norm(e.hoja)).filter((h) => h !== "CONTRATOS"));
+export function ubicarHojas(filas, existentes) {
+  const conocidas = hojasConocidas(existentes);
+  const porNum = new Map();
+  for (const e of existentes) {
+    const n = canon(e.contrato);
+    if (n) { if (!porNum.has(n)) porNum.set(n, []); porNum.get(n).push(e); }
+  }
+  const ub = new Set(), amb = new Map(), sin = new Set();
+  const out = filas.map((f) => {
+    if (!f._sinHoja) return f;
+    const { _sinHoja, ...r } = f;
+    if (conocidas.has(norm(f.hoja))) return r;
+    const n = canon(f.contrato), etq = f.contrato || f.objeto || "(sin número)";
+    const hs = [...new Set((porNum.get(n) || []).filter((e) => norm(e.hoja) !== norm(f.hoja)).map((e) => e.hoja))];
+    if (hs.length === 1) { ub.add(n); return { ...r, hoja: hs[0] }; }
+    if (hs.length > 1) amb.set(n, { contrato: etq, hojas: hs }); else sin.add(etq);
+    return f;
+  });
+  return { filas: out, ubicadas: ub.size, ambiguas: [...amb.values()], sinCoincidencia: [...sin] };
 }
 
 // Contrato leído de RTDB ({hoja, contrato, orden, filas}); Firebase puede devolver filas como objeto.
@@ -367,4 +394,90 @@ export function construirLibro(contratos, { formato = "hoja", contenido = "compl
     XLSX.utils.book_append_sheet(wb, ws, name);
   }
   return wb;
+}
+
+// ─── Permisos (contratosPermisos/{userId} = { editar: "ninguno"|"todo"|"hojas", hojas: {hojaKey: true}, eliminar: bool }) ───
+// La interfaz los aplica; la base no (el portal no usa Firebase Auth). Solo el admin los asigna.
+// Clave RTDB-segura de una hoja (misma normalización que contratoKey).
+export const hojaKey = (h) => norm(h).replace(/[.#$[\]/\x00-\x1f]/g, "-");
+
+// admin: todo y eliminar siempre (ignora el registro). Sin registro: contabilidad edita todo sin eliminar; el resto, solo ver.
+export function permisosContratos(user, registro) {
+  if (user?.role === "admin") return { editarTodo: true, puedeEditarHoja: () => true, puedeEliminar: true, puedeEliminarHoja: () => true, soloLectura: false };
+  const r = registro || (user?.role === "contabilidad" ? { editar: "todo" } : {});
+  const editarTodo = r.editar === "todo";
+  const hojas = r.editar === "hojas" ? r.hojas || {} : {};
+  const puedeEditarHoja = (h) => editarTodo || !!hojas[hojaKey(h)];
+  const puedeEliminar = !!r.eliminar;
+  return { editarTodo, puedeEditarHoja, puedeEliminar, puedeEliminarHoja: (h) => puedeEliminar && puedeEditarHoja(h), soloLectura: !editarTodo && !Object.values(hojas).some(Boolean) };
+}
+
+// ─── Historial + cambios multi-path ───
+// Cada plan* devuelve un objeto para un único update en la RAÍZ de RTDB (rutas sin prefijo de prueba: aplicarCambios lo agrega),
+// que incluye su registro en contratosHistorial/{pushId}. ctx = { usuario, nuevoId() -> pushId, at? }.
+const CX = "contratosExcel/contratos/";
+const limpia = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+const hist = (ctx, accion, c, extra = {}) => ({
+  [`contratosHistorial/${ctx.nuevoId()}`]: limpia({ at: ctx.at || new Date().toISOString(), usuario: ctx.usuario, accion, hoja: c.hoja, contratoKey: c.key, contrato: c.contrato, ...extra }),
+});
+const nombreFila = (f) => (f && f.tipo && f.tipo.trim() !== "---" ? f.tipo : "Contrato");
+
+export const filaSinIndice = (filas, idx) => filas.filter((_, i) => i !== idx);
+
+export function planEditarCampo(c, idx, campo, antes, despues, ctx) {
+  return { [`${CX}${c.key}/filas/${idx}/${campo}`]: despues ?? null, ...hist(ctx, "editar campo", c, { campo, antes: antes ?? null, despues: despues ?? null, detalle: `${nombreFila(c.filas?.[idx])} (fila ${idx + 1})` }) };
+}
+
+export function planCrearContrato(key, data, ctx) {
+  return { [CX + key]: data, ...hist(ctx, "crear contrato", { key, hoja: data.hoja, contrato: data.contrato }) };
+}
+
+export function planAgregarFila(c, idx, fila, ctx) {
+  return { [`${CX}${c.key}/filas/${idx}`]: fila, ...hist(ctx, "agregar otrosí/liquidación", c, { detalle: fila.tipo }) };
+}
+
+export function planEliminarContrato(contratos, key, ctx) {
+  const c = desdeDb(key, contratos[key]);
+  return { [CX + key]: null, ...hist(ctx, "eliminar contrato", c, { detalle: `${c.filas.length} fila(s)` }) };
+}
+
+// Quita una fila; si era la única elimina el contrato.
+export function planEliminarFila(contratos, key, idx, ctx) {
+  const c = desdeDb(key, contratos[key]);
+  if (!c.filas[idx]) throw new Error("La fila no existe");
+  if (c.filas.length < 2) return planEliminarContrato(contratos, key, ctx);
+  return { [`${CX}${key}/filas`]: filaSinIndice(c.filas, idx), ...hist(ctx, "eliminar fila", c, { detalle: `${nombreFila(c.filas[idx])} (fila ${idx + 1})` }) };
+}
+
+// Borra todos los contratos de la hoja (las notas no se tocan).
+export function planEliminarHoja(contratos, hoja, ctx) {
+  const claves = Object.keys(contratos).filter((k) => contratos[k].hoja === hoja);
+  if (!claves.length) throw new Error("La constructora no tiene contratos");
+  const upd = Object.fromEntries(claves.map((k) => [CX + k, null]));
+  return { ...upd, ...hist(ctx, "eliminar constructora", { hoja }, { detalle: `${claves.length} contrato(s)`, claves }) };
+}
+
+// planMover + su registro. accion: "unir" | "aplicar sugerencia" (si solo se mueve una fila queda "mover fila").
+export function planUnir(contratos, notas, src, dst, idx, ctx, accion = "unir") {
+  const s = desdeDb(src, contratos[src]), d = desdeDb(dst, contratos[dst]);
+  const todo = idx == null || s.filas.length < 2;
+  return { ...planMover(contratos, notas, src, dst, idx, ctx.nuevoId), ...hist(ctx, todo ? accion : "mover fila", s, { detalle: `${s.hoja} · ${s.contrato || "(sin número)"} → ${d.hoja} · ${d.contrato || "(sin número)"}`, destino: dst }) };
+}
+
+export function planComentario(c, m, ctx) {
+  return { [`contratosNotas/${c.key}/comentarios/${ctx.nuevoId()}`]: m, ...hist(ctx, "seguimiento", c, { detalle: `Comentario: ${m.texto.slice(0, 200)}` }) };
+}
+export function planFecha(c, fecha, ctx) {
+  const antes = c.nota?.fechaCompromiso;
+  return { [`contratosNotas/${c.key}/fechaCompromiso`]: fecha || null, ...hist(ctx, "seguimiento", c, { detalle: `Fecha de compromiso: ${antes || "—"} → ${fecha || "—"}` }) };
+}
+export function planIgnorarSug(c, ctx) {
+  return { [`contratosNotas/${c.key}/ignorarSugerencia`]: true, ...hist(ctx, "seguimiento", c, { detalle: "Sugerencia ignorada" }) };
+}
+
+// Carga de Excel: crea/reemplaza SOLO los contratos recibidos (orden ya resuelto) y _meta. Un único registro con las claves.
+export function planCarga(contratos, meta, ctx) {
+  const upd = { "contratosExcel/_meta": meta };
+  for (const c of contratos) upd[CX + c.key] = { hoja: c.hoja, contrato: c.contrato, orden: c.orden, actualizadoAt: meta.at, actualizadoPor: meta.autor, archivo: meta.archivo, filas: c.filas };
+  return { ...upd, ...hist({ ...ctx, at: meta.at }, "subir excel", {}, { detalle: `${meta.archivo}: ${meta.nuevos} nuevos, ${meta.actualizados} actualizados`, archivo: meta.archivo, nuevos: meta.nuevos, actualizados: meta.actualizados, claves: contratos.map((c) => c.key) }) };
 }

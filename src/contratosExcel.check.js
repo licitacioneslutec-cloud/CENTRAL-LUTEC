@@ -1,7 +1,8 @@
 // Prueba: node src/contratosExcel.check.js
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
-import { CAMPOS, leerCuadro, agruparContratos, construirLibro, contratoKey, esFinalizado, siguienteOrden, filaNueva, armarContrato, inferirModifica, aplicarAlias, sugerencias, planMover, unirFilas, desdeDb, etiquetaOtrosi } from "./contratosExcel.js";
+import { p, MODO_PRUEBA } from "./contratosFirebase.js";
+import { CAMPOS, leerCuadro, agruparContratos, construirLibro, contratoKey, esFinalizado, siguienteOrden, filaNueva, armarContrato, inferirModifica, aplicarAlias, ubicarHojas, sugerencias, planMover, unirFilas, desdeDb, etiquetaOtrosi, permisosContratos, hojaKey, filaSinIndice, planEditarCampo, planEliminarFila, planEliminarContrato, planEliminarHoja, planUnir, planCarga, planComentario } from "./contratosExcel.js";
 
 const H = CAMPOS.map((f) => f.h);
 const libro = (hojas) => {
@@ -67,7 +68,7 @@ const wb2 = construirLibro(cs);
 assert.deepEqual(wb2.SheetNames, ["ACME", "BETA"]);
 const bin = (wb) => XLSX.write(wb, { type: "array", bookType: "xlsx" });
 const r2 = leerCuadro(bin(wb2));
-const strip = (fs) => fs.map(({ orden, ...x }) => x);
+const strip = (fs) => fs.map(({ orden, _sinHoja, ...x }) => x);
 assert.deepEqual(strip(r2.filas), strip(r.filas), "export reimporta limpio");
 assert.deepEqual(agruparContratos(r2.filas).map((c) => c.key), cs.map((c) => c.key));
 const ws = wb2.Sheets.ACME;
@@ -81,6 +82,28 @@ assert.equal(wb3.Sheets.Contratos.A1.v, "HOJA");
 const r3 = leerCuadro(bin(wb3));
 assert.deepEqual(r3.hojas, ["ACME", "BETA"]);
 assert.deepEqual(strip(r3.filas), strip(r.filas), "una sola hoja reimporta igual");
+
+// Export "una sola hoja" al que se le borró la columna HOJA: ubicarHojas devuelve cada contrato a su hoja
+const ex = (hoja, contrato) => ({ key: contratoKey(hoja, { contrato }), hoja, contrato });
+const existentes = [ex("ACME", "CO No. 1"), ex("ACME", "CO No. 2"), ex("BETA", "77"), ex("BETA", "CO No.1"), ex("Contratos", "CO No. 1"), ex("Contratos", "ZZ-9"), ex("Contratos", "77")];
+const sinCol = leerCuadro(libro([["Contratos", [H, ...[["CO No.1", "Suministro"], ["CO No. 1", "Otrosí"], ["CO No. 2", "Dos"], ["ZZ-9", "Solo en Contratos"], ["NOEXISTE", "x"]].map(([c, o]) => fila({ CONTRATO: c, OBJETO: o }))]]]));
+assert.deepEqual(sinCol.sinHoja, ["Contratos"]);
+assert.ok(sinCol.filas.every((f) => f._sinHoja && f.hoja === "Contratos"));
+assert.ok(agruparContratos(sinCol.filas).every((c) => !("_sinHoja" in c.filas[0])), "_sinHoja no se guarda");
+const uh = ubicarHojas(sinCol.filas, existentes);
+assert.deepEqual(uh.ambiguas, [{ contrato: "CO No. 1", hojas: ["ACME", "BETA"] }], "mismo número en 2 hojas");
+assert.deepEqual(uh.sinCoincidencia, ["ZZ-9", "NOEXISTE"], "los candidatos en hoja Contratos no cuentan");
+assert.equal(uh.ubicadas, 1);
+const ub2 = uh.filas.find((f) => f.contrato === "CO No. 2");
+assert.equal(ub2.hoja, "ACME"); assert.ok(!ub2._sinHoja);
+assert.equal(contratoKey(ub2.hoja, ub2), existentes[1].key, "la clave coincide con la existente");
+assert.equal(sinCol.filas[0].hoja, "Contratos", "no muta la entrada");
+assert.ok(uh.filas.filter((f) => f._sinHoja).length === 4 && uh.filas.filter((f) => f.hoja === "Contratos").length === 4);
+// archivos normales por hoja (o con columna HOJA) no se tocan
+const n1 = ubicarHojas(r.filas, [ex("ACME", "CO No. 1"), ex("BETA", "77")]);
+assert.deepEqual(strip(n1.filas), strip(r.filas)); assert.ok(n1.filas.every((f) => !f._sinHoja));
+assert.deepEqual([n1.ubicadas, n1.ambiguas, n1.sinCoincidencia], [0, [], []]);
+assert.ok(r3.filas.every((f) => !f._sinHoja), "con columna HOJA no se marca");
 // Solo el contrato general: una fila por contrato con valor/fecha/estado vigentes, tipo del base
 const gen = leerCuadro(bin(construirLibro(cs, { contenido: "general" }))).filas;
 assert.equal(gen.length, cs.length);
@@ -178,5 +201,71 @@ assert.deepEqual(fn, { tipo: "OTROSÍ No. 2", entidad: "E", contrato: "CO 1", mo
 assert.equal(filaNueva({}, [], true).tipo, "LIQUIDACIÓN");
 const nuevo = { hoja: "NUEVA", orden: 1, filas: [{ contrato: "X.1", tipo: "---" }, fn] };
 assert.equal(construirLibro([armarContrato("k", "NUEVA", "X.1", 1, nuevo.filas)]).SheetNames[0], "NUEVA");
+
+// Permisos
+const sinReg = (role) => permisosContratos({ role }, null);
+assert.ok(permisosContratos({ role: "admin" }, { editar: "ninguno" }).editarTodo, "admin ignora el registro");
+assert.ok(permisosContratos({ role: "admin" }, null).puedeEliminarHoja("X"));
+const cont = sinReg("contabilidad");
+assert.ok(cont.editarTodo && cont.puedeEditarHoja("Z") && !cont.puedeEliminar && !cont.puedeEliminarHoja("Z") && !cont.soloLectura, "contabilidad por defecto: edita todo, no elimina");
+const ing = sinReg("ingenieria");
+assert.ok(!ing.editarTodo && !ing.puedeEditarHoja("ACME") && !ing.puedeEliminar && ing.soloLectura, "ingeniería por defecto: sin edición");
+const ph = permisosContratos({ role: "ingenieria" }, { editar: "hojas", hojas: { [hojaKey("Acme.")]: true }, eliminar: true });
+assert.ok(ph.puedeEditarHoja("acme.") && !ph.puedeEditarHoja("BETA") && !ph.editarTodo && !ph.soloLectura);
+assert.ok(ph.puedeEliminarHoja("ACME.") && !ph.puedeEliminarHoja("BETA"), "eliminar solo donde puede editar");
+assert.ok(!permisosContratos({ role: "ingenieria" }, { editar: "ninguno", eliminar: true }).puedeEliminarHoja("ACME"), "eliminar sin editar no basta");
+assert.ok(permisosContratos({ role: "contabilidad" }, { editar: "hojas", hojas: {} }).soloLectura, "registro manda sobre el defecto");
+assert.ok(!hojaKey("A.b#c").match(/[.#$[\]/]/));
+
+// Modo prueba: sin Vite (node) no hay import.meta.env y p() no prefija
+assert.equal(MODO_PRUEBA, false);
+assert.equal(p("contratosExcel"), "contratosExcel");
+
+// Filas y planes multi-path (siempre con historial; nunca tocan otros contratos)
+assert.deepEqual(filaSinIndice([1, 2, 3], 1), [1, 3]);
+assert.deepEqual(filaSinIndice([1], 0), []);
+let hid = 0;
+const cx = () => ({ usuario: "U", nuevoId: () => "h" + ++hid, at: "2026-01-01T00:00:00.000Z" });
+const base = {
+  "H|A": { hoja: "H", contrato: "A", orden: 1, filas: [{ contrato: "A" }, { tipo: "OTROSÍ No. 1", contrato: "A" }, { tipo: "LIQUIDACIÓN", contrato: "A" }] },
+  "H|B": { hoja: "H", contrato: "B", orden: 2, filas: [{ contrato: "B" }] },
+  "H|C": { hoja: "H", contrato: "C", orden: 3, filas: [{ contrato: "C" }, { tipo: "OTROSÍ No. 1" }] },
+  "Z|D": { hoja: "Z", contrato: "D", orden: 10001, filas: [{ contrato: "D" }] },
+};
+const hs = (u) => Object.entries(u).filter(([k]) => k.startsWith("contratosHistorial/"));
+const toca = (u) => Object.keys(u).filter((k) => !k.startsWith("contratosHistorial/"));
+const undef = (o) => JSON.stringify(o, (_, v) => (v === undefined ? "__undef__" : v)).includes("__undef__");
+
+let u = planEliminarFila(base, "H|A", 1, cx());
+assert.deepEqual(toca(u), ["contratosExcel/contratos/H|A/filas"]);
+assert.deepEqual(u["contratosExcel/contratos/H|A/filas"].map((f) => f.tipo ?? null), [null, "LIQUIDACIÓN"]);
+assert.equal(hs(u).length, 1); assert.equal(hs(u)[0][1].accion, "eliminar fila"); assert.equal(hs(u)[0][1].contratoKey, "H|A"); assert.ok(hs(u)[0][1].at && hs(u)[0][1].usuario);
+u = planEliminarFila(base, "H|B", 0, cx());
+assert.deepEqual(toca(u), ["contratosExcel/contratos/H|B"], "fila única: elimina el contrato");
+assert.equal(u["contratosExcel/contratos/H|B"], null); assert.equal(hs(u)[0][1].accion, "eliminar contrato");
+assert.throws(() => planEliminarFila(base, "H|A", 9, cx()));
+u = planEliminarContrato(base, "H|A", cx());
+assert.deepEqual(toca(u), ["contratosExcel/contratos/H|A"]); assert.equal(hs(u).length, 1);
+u = planEliminarHoja(base, "H", cx());
+assert.deepEqual(toca(u).sort(), ["contratosExcel/contratos/H|A", "contratosExcel/contratos/H|B", "contratosExcel/contratos/H|C"], "no toca la hoja Z");
+assert.ok(toca(u).every((k) => u[k] === null));
+assert.equal(hs(u).length, 1); assert.equal(hs(u)[0][1].accion, "eliminar constructora"); assert.match(hs(u)[0][1].detalle, /^3 /); assert.equal(hs(u)[0][1].contratoKey, undefined);
+assert.throws(() => planEliminarHoja(base, "NOEXISTE", cx()));
+u = planUnir(base, {}, "H|B", "H|C", null, cx());
+assert.deepEqual(toca(u).sort(), ["contratosAlias/H|B", "contratosExcel/contratos/H|B", "contratosExcel/contratos/H|C/filas"], "unir: solo origen y destino");
+assert.equal(hs(u).length, 1); assert.equal(hs(u)[0][1].accion, "unir");
+u = planUnir(base, {}, "H|A", "H|C", 1, cx());
+assert.deepEqual(toca(u).sort(), ["contratosExcel/contratos/H|A/filas", "contratosExcel/contratos/H|C/filas"]);
+assert.equal(hs(u)[0][1].accion, "mover fila");
+assert.equal(hs(planUnir(base, {}, "H|B", "H|C", null, cx(), "aplicar sugerencia"))[0][1].accion, "aplicar sugerencia");
+u = planEditarCampo(desdeDb("H|A", base["H|A"]), 1, "valor", 5, 7, cx());
+assert.deepEqual(toca(u), ["contratosExcel/contratos/H|A/filas/1/valor"]); assert.equal(u["contratosExcel/contratos/H|A/filas/1/valor"], 7);
+assert.deepEqual([hs(u)[0][1].campo, hs(u)[0][1].antes, hs(u)[0][1].despues], ["valor", 5, 7]);
+u = planCarga([{ key: "H|A", hoja: "H", contrato: "A", orden: 1, filas: [{ contrato: "A" }] }], { at: "t", autor: "U", archivo: "a.xlsx", nuevos: 0, actualizados: 1 }, cx());
+assert.deepEqual(toca(u).sort(), ["contratosExcel/_meta", "contratosExcel/contratos/H|A"]);
+assert.deepEqual(hs(u)[0][1].claves, ["H|A"]); assert.equal(hs(u)[0][1].archivo, "a.xlsx");
+u = planComentario({ key: "H|A", hoja: "H", contrato: "A" }, { texto: "hola", autor: "U", at: "t" }, cx());
+assert.equal(toca(u).length, 1); assert.equal(hs(u)[0][1].accion, "seguimiento");
+for (const x of [planEliminarFila(base, "H|A", 0, cx()), planEliminarHoja(base, "H", cx()), planUnir(base, {}, "H|B", "H|C", null, cx()), planCarga([], { at: "t", autor: "U", archivo: "a", nuevos: 0, actualizados: 0 }, cx())]) assert.ok(!undef(x), "sin undefined (RTDB lo rechaza)");
 
 console.log("contratosExcel.check OK");

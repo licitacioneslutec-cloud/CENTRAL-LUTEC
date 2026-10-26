@@ -343,7 +343,7 @@ export default function FacturasModule({ user, role, onBack }) {
         </div>
       </header>
 
-      <div style={{ maxWidth: 1320, margin: "0 auto", padding: "20px 20px" }}>
+      <div style={{ padding: "20px clamp(16px, 2vw, 24px)" }}>
         {consView === "list" ? (
           <ConsolidadosList
             consolidados={consolidados}
