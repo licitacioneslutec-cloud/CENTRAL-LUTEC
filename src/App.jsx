@@ -3,6 +3,7 @@ import Portal from "./components/Portal";
 import FacturasModule from "./components/FacturasModule";
 import DocumentosModule from "./components/DocumentosModule";
 import ContratosModule from "./components/ContratosModule";
+import CarteraModule from "./components/CarteraModule";
 import SoporteUpload from "./components/SoporteUpload";
 import AdminPanel from "./components/AdminPanel";
 import LoginScreen from "./components/LoginScreen";
@@ -78,6 +79,8 @@ export default function App() {
   } else if (view === "contratos") {
     const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
     content = <ContratosModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;
+  } else if (view === "cartera") {
+    content = <CarteraModule user={user} onBack={() => setView("portal")} />;
   } else if (view === "facturas") {
     const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
     content = <FacturasModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;

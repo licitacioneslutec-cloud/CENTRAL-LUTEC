@@ -15,6 +15,7 @@ export const DEPARTMENTS = [
     modules: [
       { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad" },
       { id: "contratos", name: "Contratos", desc: "Cuadro de experiencia: vencimientos, seguimiento y exportación", type: "internal", status: "activo", roles: ["contabilidad", "ingenieria"], view: "contratos" },
+      { id: "cartera", name: "Cartera", desc: "Cortes de World Office: cambios y presentación", type: "internal", status: "activo", role: "contabilidad", view: "cartera" },
       { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente" },
     ],
   },
