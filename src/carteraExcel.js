@@ -73,7 +73,7 @@ export function compararCortes(ant, act) {
   return { nuevas, salieron, cambioValor, cambioRango, cascada: { saldoAnt, nuevas: suma(nuevas), salieron: suma(salieron), ajustes, saldoAct } };
 }
 
-export function libroComparacion(X, { fecha: fAct, fechaAnt, resumen, comp }) {
+export function libroComparacion(X, { fecha: fAct, fechaAnt, resumen, comp, todas, filtro }) {
   const wb = X.utils.book_new();
   const hoja = (n, aoa) => X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(aoa), n);
   const base = (f) => [f.cli, f.nit, f.suc, f.doc, f.num, f.fecha, f.vence, f.dias];
@@ -90,5 +90,102 @@ export function libroComparacion(X, { fecha: fAct, fechaAnt, resumen, comp }) {
   hoja("Salieron", [[...H, "Valor"], ...comp.salieron.map((f) => [...base(f), f.valor])]);
   hoja("Cambios de valor", [[...H, "Antes", "Después", "Diferencia"], ...comp.cambioValor.map((f) => [...base(f), f.antes, f.despues, f.delta])]);
   hoja("Cambios de rango", [[...H, "Valor", "De", "A"], ...comp.cambioRango.map((f) => [...base(f), f.valor, f.de, f.a])]);
+  const HV = [...H, "Vendedor", "Valor"], fv = (f) => [...base(f), f.ven, f.valor];
+  if (todas) hoja("Todas", [HV, ...todas.map(fv)]);
+  if (filtro) hoja("Filtro", [HV, ...filtro.map(fv)]); // lo filtrado de la pestaña activa
+  return wb;
+}
+
+// ─── Cruce con banco: notas crédito del extracto vs facturas de cartera ───
+// nombre normalizado: sin tildes/puntuación ni sufijos societarios (S.A.S, SAS, S.A., LTDA)
+const normN = (s) => nombreH(s).replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").replace(/\b(S A S|SAS|S A|SA|LTDA|CIA)\b/g, " ").replace(/\s+/g, " ").trim();
+export const aliasKey = (t) => clave(normN(t));
+const nitBase = (s) => String(s ?? "").replace(/[.,]/g, "").match(/\d+/)?.[0] || "";
+// "DD/MM/YYYY", Date o serial de Excel (46317) → "YYYY-MM-DD"
+const fechaB = (v) => (typeof v === "number" || /^\d{5}$/.test(String(v)) ? fecha(new Date(Math.round((Number(v) - 25569) * 864e5))) : fecha(v));
+
+// wb = libro leído con { cellDates: true }; devuelve { id: {fecha, desc, valor, rc, fin, tercero, nitDesc} } solo de "Nota Crédito"
+export function leerBanco(wb) {
+  const ws = wb.Sheets[wb.SheetNames.includes("Movimientos1") ? "Movimientos1" : wb.SheetNames[0]];
+  const a = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const hi = a.slice(0, 20).findIndex((r) => r && r.some((c) => nombreH(c) === "TRANSACCION") && r.some((c) => nombreH(c) === "VALOR TOTAL"));
+  if (hi < 0) throw new Error("El archivo no parece un extracto bancario (faltan las columnas Transacción y Valor Total).");
+  const col = {};
+  a[hi].forEach((c, i) => { col[nombreH(c)] = i; });
+  if (col["FECHA DE SISTEMA"] === undefined) throw new Error('Falta la columna "Fecha de Sistema" en el archivo.');
+  const g = (r, h) => r[col[h]];
+  const movs = {};
+  for (const r of a.slice(hi + 1)) {
+    if (!r || nombreH(g(r, "TRANSACCION")) !== "NOTA CREDITO") continue;
+    const f = fechaB(g(r, "FECHA DE SISTEMA")), desc = txt(g(r, "DESCRIPCION MOTIVO")), valor = num(g(r, "VALOR TOTAL"));
+    if (!f || !valor) continue;
+    const rc = txt(g(r, "RC"));
+    const base = clave(`${f}|${valor}|${rc}|${desc}`.slice(0, 200));
+    let k = base, n = 1;
+    while (movs[k]) k = clave(`${base}#${++n}`);
+    movs[k] = { fecha: f, desc, valor, rc, fin: txt(g(r, "FIN DE LA TRANSACCION")).toUpperCase(), tercero: txt(g(r, "TERCERO")), nitDesc: desc.match(/\b\d{9,10}\b/)?.[0] || "" };
+  }
+  return movs;
+}
+
+// clientes = [{nit, cli}]; alias = { aliasKey: nit }. Orden: alias > nombre (Tercero) > NIT de la descripción (suele ser el pagador fiduciario).
+export function clienteDe(m, clientes, alias = {}) {
+  const ak = aliasKey(m.tercero), t = normN(m.tercero);
+  if (ak && alias[ak]) return { nit: alias[ak], por: "alias" };
+  if (t) {
+    const eq = clientes.find((c) => normN(c.cli) === t);
+    if (eq) return { nit: eq.nit, por: "nombre" };
+    const co = clientes.filter((c) => { const n = normN(c.cli); return n.length >= 5 && t.length >= 5 && (n.includes(t) || t.includes(n)); });
+    if (co.length === 1) return { nit: co[0].nit, por: "nombre" };
+  }
+  const d = m.nitDesc;
+  const c = d && clientes.find((c) => { const b = nitBase(c.nit); return b && (d === b || (d.length === b.length + 1 && d.startsWith(b))); }); // 10 dígitos = NIT + dígito de verificación
+  return c ? { nit: c.nit, por: "nit" } : null;
+}
+
+// exacto (≤ $1.000) | retención (pago = 88–100,1 % de la suma) | abono (suma > pago) | otro
+export function tipoDe(suma, valor) {
+  const r = suma ? valor / suma : 0;
+  return Math.abs(suma - valor) <= 1000 ? "exacto" : r >= 0.88 && r <= 1.001 ? "retención" : suma > valor ? "abono" : "otro";
+}
+
+// facs = facturas del cliente [{k, doc, valor, fecha, dias}]; salieron = Set de claves que salieron en el corte siguiente.
+// Subconjuntos de FV/NC (máx 6) cuya suma explique el pago; si no hay, "abono parcial" contra una factura mayor.
+export function sugerir(valor, facs, salieron = new Set()) {
+  const docs = facs.filter((f) => /^(FV|NC)$/i.test(f.doc) && f.valor).sort((a, b) => (b.valor > 0) - (a.valor > 0) || (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+  const n = docs.length, negSuf = Array(n + 1).fill(0);
+  for (let i = n - 1; i >= 0; i--) negSuf[i] = negSuf[i + 1] + Math.min(docs[i].valor, 0);
+  const lo = valor / 1.001, hi = valor / 0.88, out = [], pick = [];
+  let nodos = 0;
+  // ponytail: DFS acotada (20 000 nodos, orden por antigüedad); con cientos de facturas por cliente puede no ver todas las combinaciones
+  const dfs = (i, s) => {
+    for (let j = i; j < n && nodos < 20000; j++) {
+      nodos++;
+      const s2 = s + docs[j].valor;
+      pick.push(j);
+      if (s2 >= lo && s2 <= hi) out.push({ idx: [...pick], suma: s2 });
+      if (pick.length < 6 && s2 + negSuf[j + 1] <= hi) dfs(j + 1, s2);
+      pick.pop();
+    }
+  };
+  dfs(0, 0);
+  const res = out.map(({ idx, suma: s }) => {
+    const l = idx.map((j) => docs[j]), dif = s - valor, pct = (dif / s) * 100, tipo = tipoDe(s, valor);
+    const edad = Math.min(Math.max(l.reduce((t, f) => t + f.dias, 0) / l.length, 0), 360) / 10;
+    const score = (tipo === "exacto" ? 1000 : 0) + (l.every((f) => salieron.has(f.k)) ? 300 : 0) - 40 * l.length - pct * 5 + edad;
+    return { claves: l.map((f) => f.k), suma: s, diferencia: dif, pctRetencion: pct, tipo, score };
+  }).sort((x, y) => y.score - x.score).slice(0, 5);
+  if (res.length) return res;
+  return docs.filter((f) => f.valor > valor).sort((x, y) => x.valor - y.valor).slice(0, 3)
+    .map((f) => ({ claves: [f.k], suma: f.valor, diferencia: f.valor - valor, pctRetencion: ((f.valor - valor) / f.valor) * 100, tipo: "abono", score: 0 }));
+}
+
+// movs = [{id, fecha, desc, valor, rc, fin, tercero, c: conciliación|undefined}]
+export function libroConciliacion(X, movs) {
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([
+    ["Fecha", "RC", "Fin", "Tercero", "Descripción", "Valor", "Estado", "Cliente", "Facturas", "Suma facturas", "Diferencia", "Tipo", "Autor", "Fecha gestión"],
+    ...movs.map((m) => [m.fecha, m.rc, m.fin, m.tercero, m.desc, m.valor, m.c?.estado || "pendiente", m.c?.clienteNombre || "", m.c?.det || "", m.c?.suma ?? "", m.c?.diferencia ?? "", m.c?.tipo || "", m.c?.autor || "", m.c?.at || ""]),
+  ]), "Conciliación");
   return wb;
 }
