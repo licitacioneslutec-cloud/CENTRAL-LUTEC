@@ -72,7 +72,7 @@ const actionBtn = {
   background: C.white, border: `1px solid ${C.g200}`, fontSize: 11, fontWeight: 600,
   padding: "7px 12px", borderRadius: 4, cursor: "pointer", color: C.navy,
 };
-const COLS = "130px minmax(140px,1fr) minmax(160px,3fr) 100px 110px 95px 60px 70px 95px";
+const COLS = "130px minmax(140px,1fr) 160px minmax(160px,3fr) 100px 110px 95px 60px 70px 95px";
 const SUBCOLS = "130px minmax(160px,1fr) 110px 95px 95px 120px 130px";
 
 export default function ContratosModule({ user, onBack }) {
@@ -481,20 +481,22 @@ export default function ContratosModule({ user, onBack }) {
                 {!isCol && (
                   <div style={{ minWidth: 980 }}>
                     <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "6px 14px", fontSize: 10, fontWeight: 700, color: C.g500, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.g200}` }}>
-                      <span>Contrato</span><span>Proyecto</span><span>Objeto</span><span>Estado</span><span title="Valor vigente (último otrosí/liquidación que modifica VALOR)">Valor</span><span title="Fecha fin vigente (último otrosí/liquidación que modifica TIEMPO)">Fecha fin</span><span>Días</span><span>Otrosíes</span><span>Alarma</span>
+                      <span>Contrato</span><span>Proyecto</span><span>Encargado</span><span>Observación</span><span>Estado</span><span title="Valor vigente (último otrosí/liquidación que modifica VALOR)">Valor</span><span title="Fecha fin vigente (último otrosí/liquidación que modifica TIEMPO)">Fecha fin</span><span>Días</span><span>Otrosíes</span><span>Alarma</span>
                     </div>
                     {g.rows.map((c) => {
                       const isOpen = open === c.key;
                       const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
                       const edita = perm.puedeEditarHoja(c.hoja), puedeDel = perm.puedeEliminarHoja(c.hoja);
+                      const obs = [...c.filas].reverse().map((f) => f.observaciones).find((v) => String(v || "").trim()) || "";
                       const sub = puedeDel ? SUBCOLS + " 32px" : SUBCOLS;
                       return (
                         <div key={c.key} style={{ borderBottom: `1px solid ${C.g100}` }}>
                           <div onClick={() => { setOpen(isOpen ? null : c.key); setRowSel(null); setDraft(""); }}
-                            style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "8px 14px", fontSize: 12, color: C.g900, cursor: "pointer", alignItems: "center", background: isOpen ? C.blueL : "transparent" }}>
+                            style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "8px 14px", fontSize: 12, color: C.g900, cursor: "pointer", alignItems: "center", background: isOpen ? C.blueL : "transparent", fontWeight: isOpen ? 700 : 400, borderLeft: `3px solid ${isOpen ? C.accent : "transparent"}` }}>
                             <span style={ellipsis}>{c.contrato || "—"}</span>
                             <span style={{ fontWeight: 600, ...ellipsis }} title={c.base.proyecto}>{c.base.proyecto || "—"}</span>
-                            <span style={ellipsis} title={c.base.objeto}>{c.base.objeto || "—"}</span>
+                            <span style={ellipsis} title={c.base.encargado}>{c.base.encargado || "—"}</span>
+                            <span style={ellipsis} title={obs}>{obs || "—"}</span>
                             <span style={ellipsis}>{c.estadoEfectivo || "—"}</span>
                             <span>{c.valorVigente != null ? fmt(c.valorVigente) : "—"}</span>
                             <span>{c.fechaFinVigente || "—"}</span>
@@ -503,15 +505,15 @@ export default function ContratosModule({ user, onBack }) {
                             <span>{badge(c.alarma)}</span>
                           </div>
                           {isOpen && (
-                            <div style={{ padding: "12px 14px 16px", background: C.off, fontSize: 12 }}>
-                              <div style={{ border: `1px solid ${C.g200}`, borderRadius: 4, background: C.white, overflowX: "auto" }}>
+                            <div style={{ padding: "12px 14px 16px", background: "#F3F7FC", borderLeft: `3px solid ${C.accent}`, borderBottom: `1px solid ${C.g200}`, fontSize: 12 }}>
+                              <div style={{ border: `1px solid ${C.g200}`, borderRadius: 4, background: C.white, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,.08)" }}>
                                 <div style={{ minWidth: 700 }}>
                                   <div style={{ display: "grid", gridTemplateColumns: sub, gap: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, color: C.g500, textTransform: "uppercase", borderBottom: `1px solid ${C.g200}` }}>
                                     <span>Tipo</span><span>Objeto</span><span>Valor</span><span>Inicio</span><span>Fin</span><span>Estado</span><span>Modifica</span>{puedeDel && <span />}
                                   </div>
                                   {c.filas.map((f, i) => (
                                     <div key={i} onClick={() => setRowSel(rowSel === i ? null : i)}
-                                      style={{ display: "grid", gridTemplateColumns: sub, gap: 8, padding: "6px 10px", cursor: "pointer", alignItems: "center", background: rowSel === i ? C.blueL : "transparent", borderBottom: `1px solid ${C.g100}` }}>
+                                      style={{ display: "grid", gridTemplateColumns: sub, gap: 8, padding: "6px 10px", cursor: "pointer", alignItems: "center", background: rowSel === i ? "#FFF8E6" : "transparent", borderBottom: `1px solid ${C.g100}` }}>
                                       <span>{f.tipo && f.tipo !== "---" ? f.tipo : "Contrato"}</span>
                                       <span style={ellipsis} title={f.objeto}>{f.objeto || "—"}</span>
                                       <span>{f.valor != null ? fmt(f.valor) : "—"}</span>
