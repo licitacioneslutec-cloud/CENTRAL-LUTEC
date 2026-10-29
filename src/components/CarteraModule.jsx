@@ -193,19 +193,22 @@ export default function CarteraModule({ user, onBack }) {
     setBusy(true);
     try {
       const corte = leerCartera(XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true }));
-      setConf({ corte, archivo: file.name, existe: !!res[corte.fechaCorte] });
+      // World Office pone en el título la fecha en que se generó el informe; si el nombre trae "DD MM YYYY", manda esa
+      const m = file.name.match(/(\d{1,2})[ ._-](\d{1,2})[ ._-](\d{4})/);
+      const fNombre = m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+      setConf({ corte, archivo: file.name, fNombre, fecha: fNombre || corte.fechaCorte });
     } catch (err) { showToast(err.message || String(err)); }
     setBusy(false);
   };
 
   const confirmar = async () => {
-    const { corte, archivo } = conf;
+    const { corte, archivo, fecha: f } = conf;
     setBusy(true);
     try {
-      await guardarCorte(dbRef.current, corte.fechaCorte, { at: new Date().toISOString(), autor: user.name, archivo, facturas: corte.facturas }, resumenCorte(corte.facturas));
-      setSel(corte.fechaCorte);
+      await guardarCorte(dbRef.current, f, { at: new Date().toISOString(), autor: user.name, archivo, facturas: corte.facturas }, resumenCorte(corte.facturas));
+      setSel(f);
       setConf(null);
-      showToast(`Corte del ${fmtF(corte.fechaCorte)} guardado`);
+      showToast(`Corte del ${fmtF(f)} guardado`);
     } catch (err) { showToast("No se pudo guardar: " + (err.message || err)); }
     setBusy(false);
   };
@@ -349,7 +352,10 @@ export default function CarteraModule({ user, onBack }) {
             <h3 style={{ margin: "0 0 10px", fontSize: 15, color: C.navy }}>Subir corte</h3>
             <div style={{ fontSize: 13, color: C.g700, lineHeight: 1.7 }}>
               Archivo: <b>{conf.archivo}</b><br />
-              Fecha de corte: <b>{fmtF(conf.corte.fechaCorte)}</b><br />
+              Fecha de corte: <input type="date" value={conf.fecha} onChange={(e) => setConf({ ...conf, fecha: e.target.value })} style={{ fontSize: 13, padding: "2px 6px", border: `1px solid ${C.g200}`, borderRadius: 4 }} /><br />
+              <span style={{ fontSize: 11, color: C.g500 }}>
+                Título del archivo: {fmtF(conf.corte.fechaCorte)}{conf.fNombre ? ` · nombre del archivo: ${fmtF(conf.fNombre)}` : ""}
+              </span><br />
               Documentos: <b>{Object.keys(conf.corte.facturas).length}</b><br />
               Saldo total: <b>{fmt(conf.corte.total)}</b>
             </div>
@@ -358,14 +364,19 @@ export default function CarteraModule({ user, onBack }) {
                 La suma de los documentos ({fmt(conf.corte.total)}) difiere del "Total general" del archivo ({fmt(conf.corte.totalGeneral)}).
               </div>
             )}
-            {conf.existe && (
+            {conf.fNombre && conf.fNombre !== conf.corte.fechaCorte && (
+              <div style={{ background: C.orangeL, border: `1px solid ${C.orange}`, borderRadius: 4, padding: 8, fontSize: 12, marginTop: 10 }}>
+                El nombre del archivo ({fmtF(conf.fNombre)}) y el título ({fmtF(conf.corte.fechaCorte)}) no coinciden. Verifique la fecha de corte antes de confirmar.
+              </div>
+            )}
+            {!!res[conf.fecha] && (
               <div style={{ background: C.redL, border: `1px solid ${C.red}`, borderRadius: 4, padding: 8, fontSize: 12, marginTop: 10 }}>
                 Ya existe un corte de esa fecha, se reemplazará.
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
               <button onClick={() => setConf(null)} disabled={busy} style={actionBtn}>Cancelar</button>
-              <button onClick={confirmar} disabled={busy} style={{ ...actionBtn, background: C.accent, color: C.white, borderColor: C.accent }}>{busy ? "Guardando…" : "Confirmar"}</button>
+              <button onClick={confirmar} disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(conf.fecha || "")} style={{ ...actionBtn, background: C.accent, color: C.white, borderColor: C.accent }}>{busy ? "Guardando…" : "Confirmar"}</button>
             </div>
           </div>
         </div>
