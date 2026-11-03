@@ -17,6 +17,7 @@ export const DEPARTMENTS = [
       { id: "contratos", name: "Contratos", desc: "Cuadro de experiencia: vencimientos, seguimiento y exportación", type: "internal", status: "activo", roles: ["contabilidad", "ingenieria"], view: "contratos" },
       { id: "cartera", name: "Cartera", desc: "Cortes de World Office: cambios y presentación", type: "internal", status: "activo", role: "contabilidad", view: "cartera" },
       { id: "cxp", name: "Conciliación Proveedores", desc: "Cartera de Lutec vs estado de cuenta del proveedor", type: "internal", status: "activo", role: "contabilidad", view: "cxp" },
+      { id: "cruce-wo", name: "Cruce Compras WO", desc: "Facturas del portal vs Compras por Documento de World Office", type: "internal", status: "activo", role: "contabilidad", view: "cruce-wo" },
       { id: "oc-dian", name: "Lectura OC DIAN", desc: "Lectura de órdenes de compra desde la DIAN", type: "internal", status: "proximamente" },
     ],
   },

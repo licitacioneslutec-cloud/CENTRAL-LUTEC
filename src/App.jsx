@@ -5,6 +5,7 @@ import DocumentosModule from "./components/DocumentosModule";
 import ContratosModule from "./components/ContratosModule";
 import CarteraModule from "./components/CarteraModule";
 import ConciliacionProveedores from "./components/ConciliacionProveedores";
+import CruceComprasWO from "./components/CruceComprasWO";
 import SoporteUpload from "./components/SoporteUpload";
 import AdminPanel from "./components/AdminPanel";
 import LoginScreen from "./components/LoginScreen";
@@ -84,6 +85,8 @@ export default function App() {
     content = <CarteraModule user={user} onBack={() => setView("portal")} />;
   } else if (view === "cxp") {
     content = <ConciliacionProveedores user={user} onBack={() => setView("portal")} />;
+  } else if (view === "cruce-wo") {
+    content = <CruceComprasWO user={user} onBack={() => setView("portal")} />;
   } else if (view === "facturas") {
     const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
     content = <FacturasModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;

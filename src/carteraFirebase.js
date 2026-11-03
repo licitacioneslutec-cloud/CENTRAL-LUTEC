@@ -67,3 +67,19 @@ export function guardarRevision(db, nk, cambios, fecha, resumen) {
   if (resumen) { u[p(`cxp/resumen/${nk}/${fecha}/nDocs`)] = resumen.nDocs; u[p(`cxp/resumen/${nk}/${fecha}/porCat`)] = resumen.porCat; }
   return update(ref(db), JSON.parse(JSON.stringify(u)));
 }
+
+// ─── Cruce Compras WO ───
+// cruceWO/meses/{YYYY-MM}: { at, autor, archivo, desde, hasta, docs[] } — pesado: solo get. cruceWO/resumen/{mes}: { at, autor, archivo, desde, hasta, n, total } — liviano, suscrito.
+// cruceWO/revision/{mes}/{claveFila}: { par?, estado?, nota?, autor, at, firma }. Las facturas (`facturas`) solo se leen, nunca se escriben desde aquí.
+export async function leerMesWO(db, mes) {
+  return (await get(ref(db, p(`cruceWO/meses/${mes}`)))).val();
+}
+// Un solo update: el reporte y su resumen juntos o ninguno (re-subir el mismo mes lo reemplaza; la revisión se conserva).
+export function guardarMesWO(db, mes, reg, resumen) {
+  return update(ref(db), JSON.parse(JSON.stringify({ [p(`cruceWO/meses/${mes}`)]: reg, [p(`cruceWO/resumen/${mes}`)]: { ...resumen, at: reg.at, autor: reg.autor, archivo: reg.archivo, desde: reg.desde, hasta: reg.hasta } })));
+}
+// cambios = { claveFila: registro | null }; un solo update.
+export function guardarRevisionWO(db, mes, cambios) {
+  const u = Object.fromEntries(Object.entries(cambios).map(([k, v]) => [p(`cruceWO/revision/${mes}/${k}`), v]));
+  return update(ref(db), JSON.parse(JSON.stringify(u)));
+}
