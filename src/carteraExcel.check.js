@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
-import { leerCartera, rango, RANGOS, resumenCorte, compararCortes, libroComparacion, leerBanco, clienteDe, sugerir, tipoDe, aliasKey, libroConciliacion } from "./carteraExcel.js";
+import { leerCartera, rango, RANGOS, resumenCorte, compararCortes, libroComparacion, leerBanco, clienteDe, sugerir, tipoDe, aliasKey, libroConciliacion, planEliminarCarga, fechaDeNombre } from "./carteraExcel.js";
 
 const H = ["Nombres_Etiqueta", "Nombres", "Identificacion", "EMail", "Personalizado1", "Sucursal", "Dirección", "Ciudad_", "Telefono", "Vendedor", "Doc", "Num", "Fecha", "Fecha Vence", "Valor Total", "Por Vencer", "1 A 30", "31 A 60", "61 A 90", "91 A 180", "NumDias", "181 A 360", "Más De 360"];
 const fila = (o) => H.map((h) => o[h] ?? null);
@@ -30,6 +30,14 @@ assert.equal(new Set(ks).size, 4); // duplicado F 2 con sufijo
 const [f1, f2] = ks.map((k) => r.facturas[k]);
 assert.deepEqual([f1.fecha, f1.vence, f1.suc, f1.ven], ["2026-10-01", "2026-11-01", "Principal", "Ana"]);
 assert.deepEqual([f2.suc, f2.ven, f2.fecha], ["Principal", "Ana", "2026-10-02"]); // carry-down
+const rp = leerCartera(libro([["GRUPO LUTEC S.A.S"], ["Estado de Cuenta 30-60-90 con fecha de corte 28/10/2026 "], [], H,
+  fila({ Nombres_Etiqueta: "Proveedor", Nombres: "NACIONAL H.H.", Identificacion: "NIT 830054002 - 8", Doc: "CREM", Num: 1361504, Fecha: d(2026, 10, 1), "Valor Total": 1367097, NumDias: 167 }),
+  fila({ Doc: "DMP", Num: "759", "Valor Total": -46648, NumDias: 13 }),
+  fila({ Num: "Total general", "Valor Total": 1320449 }),
+]));
+assert.deepEqual(Object.values(rp.facturas).map((x) => [x.cli, x.nit, x.num, x.valor]), [["NACIONAL H.H.", "NIT 830054002 - 8", "1361504", 1367097], ["NACIONAL H.H.", "NIT 830054002 - 8", "759", -46648]]);
+assert.equal(rp.totalGeneral, 1320449);
+assert.equal(fechaDeNombre("CARTERA LUTEC  28 10 2026 -.xls"), "2026-10-28"); assert.equal(fechaDeNombre("nacional cxp 281026.xlsx"), null);
 assert.throws(() => leerCartera(libro([["otro"], ["x"]])), /30-60-90/);
 
 assert.deepEqual([0, 1, 30, 31, 60, 61, 90, 91, 180, 181, 360, 361].map(rango), [RANGOS[0], "1-30", "1-30", "31-60", "31-60", "61-90", "61-90", "91-180", "91-180", "181-360", "181-360", "+360"]);
@@ -87,6 +95,19 @@ s = sugerir(5e6, fs); // nada suma ≈5M → abono contra la factura mayor
 assert.deepEqual([s[0].tipo, s[0].claves], ["abono", ["x"]]);
 assert.equal(tipoDe(100000, 150000), "otro");
 assert.equal(libroConciliacion(XLSX, [{ id: "1", ...bl[0], c: { estado: "conciliado", suma: 1000, diferencia: 0 } }]).SheetNames[0], "Conciliación");
+// ─── Eliminar extractos subidos ───
+const mv = (cargaId, valor) => ({ fecha: "2026-10-22", valor, ...(cargaId ? { cargaId } : {}) });
+const bco = { a1: mv("c1", 100), a2: mv("c1", 200), a3: mv("c1", 300), b1: mv("c2", 50), v1: mv(null, 7) };
+let pl = planEliminarCarga("c1", bco, { a2: { estado: "conciliado" }, a3: { estado: "descartado" } }); // a2 y a3 se conservan
+assert.deepEqual([pl.borrados, pl.valor, pl.conservados], [1, 100, 2]);
+assert.deepEqual(pl.upd, { "cartera/banco/a1": null, "cartera/bancoCargas/c1/n": 2 });
+pl = planEliminarCarga("c1", bco, {}); // ninguno conservado → también borra el registro de la carga
+assert.deepEqual([pl.borrados, pl.valor, pl.conservados], [3, 600, 0]);
+assert.deepEqual(Object.keys(pl.upd).sort(), ["cartera/banco/a1", "cartera/banco/a2", "cartera/banco/a3", "cartera/bancoCargas/c1"]);
+assert.equal(pl.upd["cartera/bancoCargas/c1"], null);
+pl = planEliminarCarga("", bco, {}); // "Cargas anteriores": sin cargaId, sin registro de carga
+assert.deepEqual([pl.borrados, pl.valor, Object.keys(pl.upd)], [1, 7, ["cartera/banco/v1"]]);
+assert.deepEqual(planEliminarCarga("nada", bco, {}).upd, { "cartera/bancoCargas/nada": null }); // carga vacía: solo el registro
 console.log("OK sintético");
 
 const [pa, pb, pc] = process.argv.slice(2);

@@ -5,13 +5,13 @@ import * as XLSX from "xlsx";
 export const RANGOS = ["Por vencer", "1-30", "31-60", "61-90", "91-180", "181-360", "+360"];
 export const rango = (d) => (d <= 0 ? RANGOS[0] : d <= 30 ? RANGOS[1] : d <= 60 ? RANGOS[2] : d <= 90 ? RANGOS[3] : d <= 180 ? RANGOS[4] : d <= 360 ? RANGOS[5] : RANGOS[6]);
 
-const txt = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
-const nombreH = (v) => txt(v).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const txt = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
+export const nombreH = (v) => txt(v).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const clave = (s) => s.replace(/[.#$/[\]]/g, "_");
 const num = (v) => (typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(",", ".")) || 0);
 const pad = (n) => String(n).padStart(2, "0");
 // Date (cellDates; la hora viene desplazada, se usa UTC) o "DD/MM/YYYY" → "YYYY-MM-DD"
-const fecha = (v) => {
+export const fecha = (v) => {
   if (v instanceof Date && !isNaN(v)) return `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())}`;
   const m = String(v ?? "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   return m ? `${m[3]}-${pad(m[2])}-${pad(m[1])}` : "";
@@ -33,7 +33,7 @@ export function leerCartera(wb) {
   let totalGeneral = null, cli = "", nit = "", suc = "", dir = "", ven = "";
   for (const r of a.slice(hi + 1)) {
     if (!r) continue;
-    if (txt(g(r, "NOMBRES_ETIQUETA")) === "Cliente") { cli = txt(g(r, "NOMBRES")); nit = txt(g(r, "IDENTIFICACION")); suc = dir = ven = ""; }
+    if (/^(Cliente|Proveedor)$/i.test(txt(g(r, "NOMBRES_ETIQUETA")))) { cli = txt(g(r, "NOMBRES")); nit = txt(g(r, "IDENTIFICACION")); suc = dir = ven = ""; }
     const doc = txt(g(r, "DOC"));
     if (!doc) { if (r.some((c) => /^Total general/i.test(txt(c)))) totalGeneral = num(g(r, "VALOR TOTAL")); continue; }
     suc = txt(g(r, "SUCURSAL")) || suc; dir = txt(g(r, "DIRECCION")) || dir; ven = txt(g(r, "VENDEDOR")) || ven;
@@ -84,7 +84,7 @@ export function libroComparacion(X, { fecha: fAct, fechaAnt, resumen, comp, toda
     ["Saldo total", resumen.total], ["Vencido", resumen.vencido], ["N.º documentos", resumen.nDocs], [],
     ["Saldo anterior", c.saldoAnt], ["+ Nuevas", c.nuevas], ["− Salieron", c.salieron], ["± Ajustes de valor", c.ajustes], ["Saldo actual", c.saldoAct], [],
     ["Rango", "Valor"], ...RANGOS.map((r) => [r, resumen.porRango[r] || 0]), [],
-    ["Top clientes", "Saldo"], ...resumen.topClientes.map((t) => [t.cli, t.valor]),
+    ["Top clientes", "Saldo"], ...(resumen.topClientes || []).map((t) => [t.cli, t.valor]),
   ]);
   hoja("Nuevas", [[...H, "Valor"], ...comp.nuevas.map((f) => [...base(f), f.valor])]);
   hoja("Salieron", [[...H, "Valor"], ...comp.salieron.map((f) => [...base(f), f.valor])]);
@@ -99,6 +99,11 @@ export function libroComparacion(X, { fecha: fAct, fechaAnt, resumen, comp, toda
 // ─── Cruce con banco: notas crédito del extracto vs facturas de cartera ───
 // nombre normalizado: sin tildes/puntuación ni sufijos societarios (S.A.S, SAS, S.A., LTDA)
 const normN = (s) => nombreH(s).replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").replace(/\b(S A S|SAS|S A|SA|LTDA|CIA)\b/g, " ").replace(/\s+/g, " ").trim();
+// World Office pone en el título la fecha en que se generó el informe; si el nombre trae "DD MM YYYY", manda esa
+export const fechaDeNombre = (nombre) => {
+  const m = String(nombre).match(/(\d{1,2})[ ._-](\d{1,2})[ ._-](\d{4})/);
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+};
 export const aliasKey = (t) => clave(normN(t));
 const nitBase = (s) => String(s ?? "").replace(/[.,]/g, "").match(/\d+/)?.[0] || "";
 // "DD/MM/YYYY", Date o serial de Excel (46317) → "YYYY-MM-DD"
@@ -188,4 +193,19 @@ export function libroConciliacion(X, movs) {
     ...movs.map((m) => [m.fecha, m.rc, m.fin, m.tercero, m.desc, m.valor, m.c?.estado || "pendiente", m.c?.clienteNombre || "", m.c?.det || "", m.c?.suma ?? "", m.c?.diferencia ?? "", m.c?.tipo || "", m.c?.autor || "", m.c?.at || ""]),
   ]), "Conciliación");
   return wb;
+}
+
+// Elimina los movimientos de una carga (cargaId vacío = "Cargas anteriores", sin cargaId). Los conciliados o descartados se conservan.
+// movs = { id: movimiento }, conciliaciones = { id: reg }. upd usa rutas sin prefijo de modo prueba (null = borrar).
+export function planEliminarCarga(cargaId, movs, conciliaciones = {}) {
+  const upd = {};
+  let borrados = 0, valor = 0, conservados = 0;
+  for (const [id, m] of Object.entries(movs)) {
+    if ((m.cargaId || "") !== (cargaId || "")) continue;
+    if (conciliaciones[id]) { conservados++; continue; }
+    upd[`cartera/banco/${id}`] = null;
+    borrados++; valor += m.valor;
+  }
+  if (cargaId) upd[conservados ? `cartera/bancoCargas/${cargaId}/n` : `cartera/bancoCargas/${cargaId}`] = conservados || null;
+  return { upd, borrados, valor, conservados };
 }

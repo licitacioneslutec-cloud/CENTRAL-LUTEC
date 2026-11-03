@@ -1,130 +1,26 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { C } from "../constants";
-import { fmt } from "../utils";
+import { fmt, corto, fmtF } from "../utils";
 import { isFirebaseConfigured, initFirebase } from "../firebase";
 import { MODO_PRUEBA } from "../contratosFirebase";
 import { subscribeResumenes, leerCorte, guardarCorte } from "../carteraFirebase";
-import { leerCartera, resumenCorte, compararCortes, libroComparacion, RANGOS, rango } from "../carteraExcel";
+import { leerCartera, fechaDeNombre, resumenCorte, compararCortes, libroComparacion, RANGOS, rango } from "../carteraExcel";
 import SearchBar from "./SearchBar";
+import { Cascada, BarrasV, Linea, BarrasH, Kpi, Panel } from "./CarteraCharts";
 import CruceBanco from "./CruceBanco";
 
 const MAX_MB = 20;
-const corto = (n) => (Math.abs(n) >= 1e6 ? `${n < 0 ? "-" : ""}$${Math.abs(n / 1e6).toLocaleString("es-CO", { maximumFractionDigits: 0 })} M` : fmt(n));
-const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
-const fmtF = (f) => (f ? f.split("-").reverse().join("/") : "—");
-const actionBtn = { background: C.white, borderStyle: "solid", borderWidth: 1, borderColor: C.g200, fontSize: 11, fontWeight: 600, padding: "7px 12px", borderRadius: 4, cursor: "pointer", color: C.navy };
 const card = { background: C.white, border: `1px solid ${C.g200}`, borderRadius: 8, padding: 14 };
+const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
+const actionBtn = { background: C.white, borderStyle: "solid", borderWidth: 1, borderColor: C.g200, fontSize: 11, fontWeight: 600, padding: "7px 12px", borderRadius: 4, cursor: "pointer", color: C.navy };
 const MONEY = ["valor", "antes", "despues", "delta"];
 const FLT0 = { cli: "", rango: "", doc: "", ven: "", venc: false };
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 };
 const TABS = [["todas", "Todas"], ["nuevas", "Nuevas"], ["salieron", "Salieron"], ["cambioValor", "Cambios de valor"], ["cambioRango", "Cambios de rango"]];
 
-// ─── Gráficos SVG (sin librerías) ───
-const W = 560, H = 240, M = { l: 12, r: 12, t: 20, b: 30 };
-const Svg = ({ children }) => <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>{children}</svg>;
-const escala = (lo, hi, a, b) => (v) => a + ((v - lo) / (hi - lo || 1)) * (b - a);
-
-// items: [{label, valor, base?, color}]; barra de base→base+valor (o 0→valor si no hay base)
-function Cascada({ cas }) {
-  const { saldoAnt, nuevas, salieron, ajustes, saldoAct } = cas;
-  const it = [
-    { label: "Saldo anterior", de: 0, a: saldoAnt, color: C.navy, txt: corto(saldoAnt) },
-    { label: "Nuevas", de: saldoAnt, a: saldoAnt + nuevas, color: C.red, txt: "+" + corto(nuevas) },
-    { label: "Salieron", de: saldoAnt + nuevas, a: saldoAnt + nuevas - salieron, color: C.green, txt: "−" + corto(salieron) },
-    { label: "Ajustes", de: saldoAnt + nuevas - salieron, a: saldoAct, color: C.orange, txt: (ajustes < 0 ? "−" : "+") + corto(Math.abs(ajustes)) },
-    { label: "Saldo actual", de: 0, a: saldoAct, color: C.navy, txt: corto(saldoAct) },
-  ];
-  // Eje truncado: las variaciones diarias son diminutas frente al saldo
-  const niv = it.flatMap((x) => [x.de ? x.de : null, x.a].filter((v) => v !== null));
-  const mn = Math.min(...niv), mx = Math.max(...niv), sp = (mx - mn) || Math.abs(mx) || 1;
-  const lo = mn - sp * 0.6, hi = mx + sp * 0.25, y = escala(lo, hi, H - M.b, M.t);
-  const bw = (W - M.l - M.r) / it.length;
-  return (
-    <Svg>
-      {it.map((x, i) => {
-        const y1 = y(x.de || lo), y2 = y(x.a), top = Math.min(y1, y2), h = Math.max(Math.abs(y1 - y2), 2);
-        return (
-          <g key={x.label}>
-            <rect x={M.l + i * bw + bw * 0.15} y={top} width={bw * 0.7} height={h} fill={x.color} rx={2} />
-            <text x={M.l + i * bw + bw / 2} y={top - 5} textAnchor="middle" fontSize={11} fontWeight={700} fill={C.g900}>{x.txt}</text>
-            <text x={M.l + i * bw + bw / 2} y={H - 10} textAnchor="middle" fontSize={11} fill={C.g500}>{x.label}</text>
-          </g>
-        );
-      })}
-    </Svg>
-  );
-}
-
-function BarrasV({ datos }) {
-  const mx = Math.max(0, ...datos.map((d) => d.valor)), mn = Math.min(0, ...datos.map((d) => d.valor));
-  const y = escala(mn, mx, H - M.b, M.t + 8), bw = (W - M.l - M.r) / datos.length;
-  return (
-    <Svg>
-      <line x1={M.l} x2={W - M.r} y1={y(0)} y2={y(0)} stroke={C.g300} />
-      {datos.map((d, i) => {
-        const y1 = y(0), y2 = y(d.valor);
-        return (
-          <g key={d.label}>
-            <rect x={M.l + i * bw + bw * 0.15} y={Math.min(y1, y2)} width={bw * 0.7} height={Math.max(Math.abs(y1 - y2), 1)} fill={i === 0 ? C.blue : i < 3 ? C.orange : C.red} rx={2} />
-            <text x={M.l + i * bw + bw / 2} y={Math.min(y1, y2) - 5} textAnchor="middle" fontSize={10} fontWeight={700} fill={C.g900}>{corto(d.valor)}</text>
-            <text x={M.l + i * bw + bw / 2} y={H - 10} textAnchor="middle" fontSize={11} fill={C.g500}>{d.label}</text>
-          </g>
-        );
-      })}
-    </Svg>
-  );
-}
-
-function Linea({ puntos }) {
-  if (puntos.length < 2) return <div style={{ fontSize: 12, color: C.g500, padding: "40px 0", textAlign: "center" }}>Se necesitan al menos 2 cortes para ver la evolución.</div>;
-  const mx = Math.max(...puntos.flatMap((q) => [q.total, q.vencido])), mn = Math.min(0, ...puntos.map((q) => q.vencido));
-  const y = escala(mn, mx, H - M.b, M.t + 10), x = (i) => M.l + 30 + (i / (puntos.length - 1)) * (W - M.l - M.r - 60);
-  const tr = (k) => puntos.map((q, i) => `${x(i)},${y(q[k])}`).join(" ");
-  const ult = puntos.length - 1;
-  return (
-    <Svg>
-      {[["total", C.navy], ["vencido", C.red]].map(([k, col]) => (
-        <g key={k}>
-          <polyline points={tr(k)} fill="none" stroke={col} strokeWidth={2} />
-          {puntos.map((q, i) => <circle key={q.fecha} cx={x(i)} cy={y(q[k])} r={3} fill={col}><title>{`${fmtF(q.fecha)}: ${fmt(q[k])}`}</title></circle>)}
-          <text x={x(ult)} y={y(puntos[ult][k]) - 8} textAnchor="end" fontSize={11} fontWeight={700} fill={col}>{k === "total" ? "Total " : "Vencido "}{corto(puntos[ult][k])}</text>
-        </g>
-      ))}
-      <text x={x(0)} y={H - 10} textAnchor="start" fontSize={11} fill={C.g500}>{fmtF(puntos[0].fecha)}</text>
-      <text x={x(ult)} y={H - 10} textAnchor="end" fontSize={11} fill={C.g500}>{fmtF(puntos[ult].fecha)}</text>
-    </Svg>
-  );
-}
-
-function BarrasH({ datos }) {
-  const mx = Math.max(1, ...datos.map((d) => d.valor)), fila = 22, h = datos.length * fila + 8, tx = 190;
-  return (
-    <svg viewBox={`0 0 ${W} ${h}`} style={{ width: "100%", height: "auto", display: "block" }}>
-      {datos.map((d, i) => (
-        <g key={d.cli}>
-          <text x={tx - 6} y={i * fila + 16} textAnchor="end" fontSize={11} fill={C.g700}>{d.cli.length > 30 ? d.cli.slice(0, 29) + "…" : d.cli}<title>{d.cli}</title></text>
-          <rect x={tx} y={i * fila + 5} width={Math.max((d.valor / mx) * (W - tx - 80), 1)} height={14} fill={C.blue} rx={2} />
-          <text x={tx + Math.max((d.valor / mx) * (W - tx - 80), 1) + 5} y={i * fila + 16} fontSize={11} fontWeight={700} fill={C.g900}>{corto(d.valor)}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-const Kpi = ({ label, valor, sub, color = C.navy }) => (
-  <div style={{ ...card, flex: "1 1 160px" }}>
-    <div style={{ fontSize: 10, color: C.g500, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
-    <div style={{ fontSize: 22, fontWeight: 700, color, marginTop: 4 }}>{valor}</div>
-    {sub && <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>{sub}</div>}
-  </div>
-);
-const Panel = ({ titulo, children }) => (
-  <div style={{ ...card, flex: "1 1 420px", minWidth: 0 }}>
-    <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 6 }}>{titulo}</div>
-    {children}
-  </div>
-);
+// filtros compartidos (tabla y gráfica); la gráfica no aplica flt.cli: clic en una barra lo activa
+const pasa = (f, q, flt, conCli) => (!q || [f.cli, f.nit, f.num].some((v) => String(v).toLowerCase().includes(q))) && (!conCli || !flt.cli || f.cli === flt.cli) && (!flt.rango || rango(f.dias) === flt.rango) && (!flt.doc || f.doc === flt.doc) && (!flt.ven || f.ven === flt.ven) && (!flt.venc || f.dias > 0);
 
 export default function CarteraModule({ user, onBack }) {
   const configured = isFirebaseConfigured();
@@ -140,6 +36,7 @@ export default function CarteraModule({ user, onBack }) {
   const [ord, setOrd] = useState({ col: "dias", dir: "desc" });
   const toggleSort = (col) => setOrd((o) => (o.col === col ? { col, dir: o.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }));
   const [search, setSearch] = useState("");
+  const [qCli, setQCli] = useState(""), [orden, setOrden] = useState("mayor"), [mostrar, setMostrar] = useState("10"); // controles de la gráfica de clientes
   const [conf, setConf] = useState(null); // { corte, archivo, existe }
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
@@ -171,9 +68,15 @@ export default function CarteraModule({ user, onBack }) {
   const todasL = useMemo(() => (cargado ? Object.entries(data.act).map(([k, f]) => ({ ...f, k })) : []), [cargado, data]);
   const base = useMemo(() => (tab === "todas" ? todasL : comp?.[tab] || []), [tab, todasL, comp]);
   const opc = useMemo(() => { const o = (key) => [...new Set(todasL.map((f) => f[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")); return { cli: o("cli"), ven: o("ven"), doc: o("doc") }; }, [todasL]);
+  const datosCli = useMemo(() => {
+    const q = search.trim().toLowerCase(), qc = qCli.trim().toLowerCase(), o = {};
+    for (const f of todasL) if (pasa(f, q, flt, false) && (!qc || f.cli.toLowerCase().includes(qc))) o[f.cli] = (o[f.cli] || 0) + f.valor;
+    const l = Object.entries(o).map(([cli, valor]) => ({ cli, valor })).sort((x, y) => (orden === "mayor" ? y.valor - x.valor : x.valor - y.valor));
+    return { n: l.length, graf: mostrar === "todos" ? l : l.slice(0, Number(mostrar)) };
+  }, [todasL, search, qCli, orden, mostrar, flt]);
   const filas = useMemo(() => {
     const q = search.trim().toLowerCase(), sk = ord.col === "rango" ? "dias" : ord.col;
-    return base.filter((f) => (!q || [f.cli, f.nit, f.num].some((v) => String(v).toLowerCase().includes(q))) && (!flt.cli || f.cli === flt.cli) && (!flt.rango || rango(f.dias) === flt.rango) && (!flt.doc || f.doc === flt.doc) && (!flt.ven || f.ven === flt.ven) && (!flt.venc || f.dias > 0))
+    return base.filter((f) => pasa(f, q, flt, true))
       .sort((a, b) => { const x = a[sk], y = b[sk], c = typeof x === "number" ? x - y : String(x ?? "").localeCompare(String(y ?? ""), "es"); return ord.dir === "desc" ? -c : c; });
   }, [base, search, flt, ord]);
   const totalTab = filas.reduce((s, f) => s + (tab === "cambioValor" ? f.delta : f.valor), 0);
@@ -193,9 +96,7 @@ export default function CarteraModule({ user, onBack }) {
     setBusy(true);
     try {
       const corte = leerCartera(XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true }));
-      // World Office pone en el título la fecha en que se generó el informe; si el nombre trae "DD MM YYYY", manda esa
-      const m = file.name.match(/(\d{1,2})[ ._-](\d{1,2})[ ._-](\d{4})/);
-      const fNombre = m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+      const fNombre = fechaDeNombre(file.name); // manda sobre la fecha del título
       setConf({ corte, archivo: file.name, fNombre, fecha: fNombre || corte.fechaCorte });
     } catch (err) { showToast(err.message || String(err)); }
     setBusy(false);
@@ -224,7 +125,7 @@ export default function CarteraModule({ user, onBack }) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.off, fontFamily: "system-ui,-apple-system,sans-serif", paddingTop: MODO_PRUEBA ? 24 : 0 }}>
-      <style>{"@media print { .no-print { display: none !important; } body { background: #fff; } }"}</style>
+      <style>{"@media print { .no-print { display: none !important; } body { background: #fff; } .cli-scroll { max-height: none !important; overflow: visible !important; } }"}</style>
       {MODO_PRUEBA && <div className="no-print" style={{ position: "fixed", top: 0, left: 0, right: 0, height: 24, lineHeight: "24px", background: "#facc15", color: "#422006", fontSize: 12, fontWeight: 700, textAlign: "center", zIndex: 1300 }}>MODO PRUEBA — los cambios no afectan producción</div>}
       <header className="app-header no-print" style={{ background: C.navy, padding: "0 24px" }}>
         <div style={{ display: "flex", alignItems: "center", height: 50, gap: 10 }}>
@@ -292,8 +193,27 @@ export default function CarteraModule({ user, onBack }) {
               <Panel titulo="Evolución del saldo total y vencido">
                 <Linea puntos={fechas.map((f) => ({ fecha: f, total: res[f].total, vencido: res[f].vencido }))} />
               </Panel>
-              <Panel titulo="Top 10 clientes por saldo">
-                <BarrasH datos={r.topClientes || []} />
+              <Panel titulo={`Clientes por saldo${cargado ? ` (${datosCli.n})` : ""}`}>
+                {!cargado ? <div style={{ fontSize: 12, color: C.g500, padding: "40px 0", textAlign: "center" }}>Cargando corte…</div> : (
+                  <>
+                    <div className="no-print" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                      {[[mostrar, setMostrar, [["10", "Top 10"], ["20", "Top 20"], ["todos", "Todos"]]], [orden, setOrden, [["mayor", "Mayor saldo"], ["menor", "Menor saldo"]]]].map(([v, set, ops], i) => (
+                        <select key={i} value={v} onChange={(e) => set(e.target.value)} style={{ ...actionBtn, fontWeight: 400 }}>{ops.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
+                      ))}
+                      <select value={flt.rango} onChange={(e) => setFlt({ ...flt, rango: e.target.value })} style={{ ...actionBtn, fontWeight: 400 }}>
+                        <option value="">Todos los rangos</option>
+                        {RANGOS.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                      <label style={{ fontSize: 12, color: C.g700, display: "flex", gap: 4, alignItems: "center", cursor: "pointer" }}><input type="checkbox" checked={flt.venc} onChange={(e) => setFlt({ ...flt, venc: e.target.checked })} />Solo vencidas</label>
+                      <input value={qCli} onChange={(e) => setQCli(e.target.value)} placeholder="Buscar cliente…" style={{ ...actionBtn, fontWeight: 400, width: 130 }} />
+                      {flt.cli && <button onClick={() => setFlt({ ...flt, cli: "" })} style={actionBtn} title={flt.cli}>✕ {flt.cli.length > 22 ? flt.cli.slice(0, 21) + "…" : flt.cli}</button>}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.g500, marginBottom: 4 }}>{datosCli.graf.length} de {datosCli.n} clientes · suma graficada: <b style={{ color: C.navy }}>{fmt(datosCli.graf.reduce((s, d) => s + d.valor, 0))}</b> · clic en una barra filtra la tabla</div>
+                    <div className="cli-scroll" style={mostrar === "todos" ? { maxHeight: 420, overflowY: "auto" } : undefined}>
+                      {datosCli.graf.length ? <BarrasH datos={datosCli.graf} sel={flt.cli} onClick={(cli) => setFlt((o) => ({ ...o, cli: o.cli === cli ? "" : cli }))} /> : <div style={{ fontSize: 12, color: C.g500, padding: "20px 0", textAlign: "center" }}>Sin clientes con esos filtros.</div>}
+                    </div>
+                  </>
+                )}
               </Panel>
             </div>
 

@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { C } from "../constants";
 import { fmt } from "../utils";
-import { subscribeRuta, guardarBanco, guardarConciliacion, leerCorte } from "../carteraFirebase";
-import { leerBanco, clienteDe, sugerir, tipoDe, aliasKey, compararCortes, libroConciliacion } from "../carteraExcel";
+import { subscribeRuta, guardarBanco, guardarConciliacion, leerCorte, aplicarPlan } from "../carteraFirebase";
+import { leerBanco, clienteDe, sugerir, tipoDe, aliasKey, compararCortes, libroConciliacion, planEliminarCarga } from "../carteraExcel";
 import SearchBar from "./SearchBar";
 
 const MAX_MB = 20;
@@ -133,7 +133,8 @@ function Detalle({ m, fechas, obtener, alias, usadas, user, db, showToast }) {
 export default function CruceBanco({ db, user, fechas, showToast }) {
   const fileRef = useRef(null);
   const cache = useRef({}); // promesas de leerCorte por fecha
-  const [banco, setBanco] = useState({}), [conc, setConc] = useState({}), [alias, setAlias] = useState({});
+  const [banco, setBanco] = useState({}), [conc, setConc] = useState({}), [alias, setAlias] = useState({}), [cargas, setCargas] = useState({});
+  const [verCargas, setVerCargas] = useState(false), [elim, setElim] = useState(null); // elim: { id, archivo, plan }
   const [fin, setFin] = useState("CARTERA"), [estado, setEstado] = useState("pendiente");
   const [q, setQ] = useState(""), [desde, setDesde] = useState(""), [hasta, setHasta] = useState("");
   const [abierto, setAbierto] = useState(null);
@@ -142,7 +143,7 @@ export default function CruceBanco({ db, user, fechas, showToast }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const u = [["cartera/banco", setBanco], ["cartera/conciliacion", setConc], ["cartera/alias", setAlias]].map(([r, s]) => subscribeRuta(db, r, s));
+    const u = [["cartera/banco", setBanco], ["cartera/conciliacion", setConc], ["cartera/alias", setAlias], ["cartera/bancoCargas", setCargas]].map(([r, s]) => subscribeRuta(db, r, s));
     return () => u.forEach((f) => f());
   }, [db]);
 
@@ -179,7 +180,23 @@ export default function CruceBanco({ db, user, fechas, showToast }) {
   };
   const confirmar = async () => {
     setBusy(true);
-    try { await guardarBanco(db, conf.movs); showToast(`Extracto guardado: ${conf.nuevas} movimientos nuevos`); setConf(null); } catch (err) { showToast("No se pudo guardar: " + (err.message || err)); }
+    try {
+      const ms = Object.values(conf.movs).map((m) => m.fecha).sort(), id = "c" + Date.now().toString(36);
+      const movs = Object.fromEntries(Object.entries(conf.movs).map(([k, m]) => [k, { ...m, cargaId: id, archivo: conf.archivo }]));
+      await guardarBanco(db, movs, { id, reg: { archivo: conf.archivo, at: new Date().toISOString(), autor: user.name, n: ms.length, desde: ms[0] || "", hasta: ms[ms.length - 1] || "" } });
+      showToast(`Extracto guardado: ${conf.nuevas} movimientos nuevos`); setConf(null);
+    } catch (err) { showToast("No se pudo guardar: " + (err.message || err)); }
+    setBusy(false);
+  };
+  // grupos del modal: cada carga registrada + "Cargas anteriores" (movimientos sin cargaId)
+  const grupos = useMemo(() => {
+    const g = Object.entries(cargas).map(([id, c]) => ({ id, ...c })).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+    if (Object.values(banco).some((m) => !m.cargaId)) g.push({ id: "", archivo: "Cargas anteriores", at: "", autor: "", desde: "", hasta: "" });
+    return g.map((x) => ({ ...x, plan: planEliminarCarga(x.id, banco, conc) }));
+  }, [cargas, banco, conc]);
+  const eliminar = async () => {
+    setBusy(true);
+    try { await aplicarPlan(db, elim.plan.upd); showToast(`Extracto eliminado: ${elim.plan.borrados} movimientos${elim.plan.conservados ? `, ${elim.plan.conservados} conservados` : ""}`); setElim(null); } catch (err) { showToast("No se pudo eliminar: " + (err.message || err)); }
     setBusy(false);
   };
 
@@ -206,6 +223,7 @@ export default function CruceBanco({ db, user, fechas, showToast }) {
       <div className="no-print" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onArchivo} style={{ display: "none" }} />
         <button onClick={() => fileRef.current?.click()} disabled={busy} style={primario}>{busy ? "Procesando…" : "⬆ Subir extracto"}</button>
+        <button onClick={() => setVerCargas(true)} disabled={!grupos.length} style={actionBtn}>Extractos subidos ({grupos.length})</button>
         <button onClick={() => XLSX.writeFile(libroConciliacion(XLSX, filas), "Conciliacion_Banco.xlsx")} disabled={!filas.length} style={actionBtn}>⬇ Exportar Excel</button>
       </div>
       {!fechas.length && <div style={{ ...card, color: C.g500, fontSize: 12, marginBottom: 12 }}>Aún no hay cortes de cartera: suba al menos uno para poder sugerir facturas.</div>}
@@ -264,6 +282,48 @@ export default function CruceBanco({ db, user, fechas, showToast }) {
           </>
         )}
       </div>
+
+      {verCargas && (
+        <div style={overlay}>
+          <div style={{ background: C.white, borderRadius: 8, padding: 20, width: "100%", maxWidth: 760, maxHeight: "85vh", overflowY: "auto" }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 15, color: C.navy }}>Extractos subidos</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>{["Archivo", "Subido", "Autor", "Rango", "Movimientos", ""].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {grupos.map((x) => (
+                  <tr key={x.id || "anteriores"}>
+                    <td style={td}>{x.archivo || "—"}</td>
+                    <td style={td}>{x.at ? new Date(x.at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
+                    <td style={td}>{x.autor || "—"}</td>
+                    <td style={td}>{x.desde ? `${fmtF(x.desde)} – ${fmtF(x.hasta)}` : "—"}</td>
+                    <td style={td}>{x.plan.borrados + x.plan.conservados}{x.plan.conservados > 0 && <span style={{ color: C.g500 }}> ({x.plan.conservados} conciliados/descartados)</span>}</td>
+                    <td style={td}><button onClick={() => setElim({ id: x.id, archivo: x.archivo, plan: x.plan })} style={{ ...actionBtn, color: C.red }}>Eliminar</button></td>
+                  </tr>
+                ))}
+                {!grupos.length && <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: C.g500 }}>Sin extractos.</td></tr>}
+              </tbody>
+            </table>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}><button onClick={() => setVerCargas(false)} style={actionBtn}>Cerrar</button></div>
+          </div>
+        </div>
+      )}
+
+      {elim && (
+        <div style={{ ...overlay, zIndex: 1150 }}>
+          <div style={{ background: C.white, borderRadius: 8, padding: 20, width: "100%", maxWidth: 460 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 15, color: C.navy }}>Eliminar extracto</h3>
+            <div style={{ fontSize: 13, color: C.g700, lineHeight: 1.7 }}>
+              Archivo: <b>{elim.archivo}</b><br />
+              Se borrarán <b>{elim.plan.borrados}</b> movimientos por <b>{fmt(elim.plan.valor)}</b>. No se puede deshacer.<br />
+              {elim.plan.conservados > 0 && <>Se conservan <b>{elim.plan.conservados}</b> movimientos conciliados o descartados.</>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setElim(null)} disabled={busy} style={actionBtn}>Cancelar</button>
+              <button onClick={eliminar} disabled={busy} style={{ ...primario, background: C.red, borderColor: C.red }}>{busy ? "Eliminando…" : "Eliminar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {conf && (
         <div style={overlay}>

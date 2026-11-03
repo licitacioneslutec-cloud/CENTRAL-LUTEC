@@ -3,6 +3,8 @@ import { construirLibro } from "./contratosExcel";
 
 // Formats a number as Colombian peso currency, e.g. fmt(335580) -> "$335.580"
 export const fmt = (n) => (!n && n !== 0 ? "$0" : "$" + Number(n).toLocaleString("es-CO", { maximumFractionDigits: 0 }));
+export const corto = (n) => (Math.abs(n) >= 1e6 ? `${n < 0 ? "-" : ""}$${Math.abs(n / 1e6).toLocaleString("es-CO", { maximumFractionDigits: 0 })} M` : fmt(n));
+export const fmtF = (f) => (f ? f.split("-").reverse().join("/") : "—");
 
 // Parses a Colombian-formatted currency value ("$ 53.580,00") or a plain
 // number into a JS number. Handles values Excel already gave us as numbers too.
