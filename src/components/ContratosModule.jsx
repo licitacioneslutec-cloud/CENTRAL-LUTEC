@@ -11,16 +11,17 @@ const MAX_MB = 20;
 
 const ALARMAS = {
   VENCIDO: { label: "VENCIDO", color: C.red, bg: C.redL },
+  LIQV: { label: "LIQ + VENC", color: "#7c3aed", bg: "#f3e8ff" },
   D15: { label: "15 DÍAS", color: "#c2410c", bg: "#fff7ed" },
   M3: { label: "3 MESES", color: "#a16207", bg: "#fefce8" },
   VIGENTE: { label: "VIGENTE", color: C.green, bg: C.greenL },
   SIN: { label: "SIN FECHA", color: C.g500, bg: C.g100 },
   FINAL: { label: "FINALIZADO", color: C.g700, bg: C.g100 },
 };
-const CON_ALARMA = ["VENCIDO", "D15", "M3"];
+const CON_ALARMA = ["VENCIDO", "LIQV", "D15", "M3"];
 
 const FILTROS = [
-  ["ALARMA", "Con alarma"], ["TODOS", "Todos"], ["VENCIDO", "Vencidos"],
+  ["ALARMA", "Con alarma"], ["TODOS", "Todos"], ["VENCIDO", "Vencidos"], ["LIQV", "Liq + venc"],
   ["D15", "≤15 días"], ["M3", "≤3 meses"], ["VIGENTE", "Vigentes"], ["SIN", "Sin fecha"], ["FINAL", "Finalizados"],
 ];
 
@@ -63,7 +64,7 @@ const EstadoSelect = ({ value, onChange, disabled }) => {
 };
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 };
 const dialog = { background: C.white, borderRadius: 8, padding: 20, width: "100%", maxHeight: "90vh", overflowY: "auto" };
-const coincide = (c, q) => !q || [c.contrato, c.hoja, c.base.objeto, c.base.proyecto, c.base.entidad, c.base.nit].some((v) => String(v || "").toLowerCase().includes(q));
+const coincide = (c, q) => !q || [c.contrato, c.hoja, c.base.objeto, c.base.proyecto, c.base.entidad, c.base.nit, ...(c.filas || []).map((f) => f.encargado)].some((v) => String(v || "").toLowerCase().includes(q));
 const etiqueta = (c) => `${c.hoja} · ${c.contrato || "(sin número)"}`;
 const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -125,12 +126,12 @@ export default function ContratosModule({ user, onBack }) {
     return Object.entries(raw.excel?.contratos || {}).map(([key, c]) => {
       const d = desdeDb(key, c);
       const dias = diasPara(d.fechaFinVigente);
-      return { ...d, nota: notas[key] || {}, dias, alarma: esFinalizado(d.estadoEfectivo) ? "FINAL" : alarmaDe(dias), otrosies: d.filas.filter(esOtrosi).length };
+      return { ...d, nota: notas[key] || {}, dias, alarma: esFinalizado(d.estadoEfectivo) ? "FINAL" : (a => a === "VENCIDO" && /EN LIQUIDAC/.test(norm(d.estadoEfectivo ?? "")) ? "LIQV" : a)(alarmaDe(dias)), otrosies: d.filas.filter(esOtrosi).length };
     });
   }, [raw]);
 
   const counts = useMemo(() => {
-    const n = { TODOS: contratos.length, ALARMA: 0, VENCIDO: 0, D15: 0, M3: 0, VIGENTE: 0, SIN: 0, FINAL: 0 };
+    const n = { TODOS: contratos.length, ALARMA: 0, VENCIDO: 0, LIQV: 0, D15: 0, M3: 0, VIGENTE: 0, SIN: 0, FINAL: 0 };
     contratos.forEach((c) => { n[c.alarma]++; if (CON_ALARMA.includes(c.alarma)) n.ALARMA++; });
     return n;
   }, [contratos]);
