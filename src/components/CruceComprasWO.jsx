@@ -4,8 +4,8 @@ import { C } from "../constants";
 import { fmt, corto, fmtF } from "../utils";
 import { isFirebaseConfigured, initFirebase, subscribeFacturas } from "../firebase";
 import { MODO_PRUEBA } from "../contratosFirebase";
-import { subscribeRuta, leerMesWO, guardarMesWO, guardarRevisionWO } from "../carteraFirebase";
-import { leerComprasWO, cruzar, resumenCruce, libroCruceWO, paresDe, firmaDe, estadoRev, normDoc, REV, CATS, CAT } from "../cruceWO";
+import { subscribeRuta, leerMesWO, guardarMesWO, eliminarMesWO, guardarRevisionWO } from "../carteraFirebase";
+import { leerComprasWO, cruzar, resumenCruce, libroCruceWO, aplicarExclusiones, paresDe, firmaDe, estadoRev, normDoc, REV, CATS, CAT } from "../cruceWO";
 import SearchBar from "./SearchBar";
 import { BarrasV, BarrasH, Kpi, Panel } from "./CarteraCharts";
 
@@ -19,13 +19,13 @@ const primario = { ...actionBtn, background: C.accent, color: C.white, borderCol
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 };
 const FLT0 = { cat: "", prov: "", obs: "", rev: "" };
 const SIN_OBS = "__sin";
-const TABS = [["todas", "Todas"], ...CATS.map(([k, n]) => [k, n])];
+const TABS = [["todas", "Todas"], ...CATS.map(([k, n]) => [k, n]), ["aprobados", "Aprobados"], ["eliminadas", "Eliminadas"]];
 const MONEY = ["valorPortal", "valorWO", "dif"];
 const mesLbl = (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString("es-CO", { month: "long", year: "numeric" });
 const campo = (f, k, rv) => (k === "categoria" ? CAT[f.categoria]?.n : k === "rev" ? rv(f) : f[k]);
 
 // Panel de una fila: lado portal vs WO, emparejar / separar y revisión. onGuardar(fila, parche): el parche se guarda en el registro de esa fila.
-function EditorFila({ f, rec, est, filas, onGuardar, onClose, disabled }) {
+function EditorFila({ f, rec, est, filas, onGuardar, onClose, onEliminar, disabled }) {
   const [nota, setNota] = useState(rec?.nota || ""), [q, setQ] = useState("");
   const esW = f.categoria === "soloWO", mismo = (x) => (x.nit === f.nit ? 0 : 1);
   const opts = filas.filter((x) => (esW ? x.id != null && (x.categoria === "noWO" || x.categoria === "sinERP") : x.categoria === "soloWO") && (!q || [x.num, x.proveedor, x.nit].some((v) => String(v ?? "").toLowerCase().includes(q.trim().toLowerCase())))).sort((a, b) => mismo(a) - mismo(b)).slice(0, 200);
@@ -58,6 +58,7 @@ function EditorFila({ f, rec, est, filas, onGuardar, onClose, disabled }) {
         {b("Marcar con observación", () => go(f, { estado: "observado", nota }))}
         {b("Volver a pendiente", () => go(f, { estado: null, nota }))}
         <button onClick={onClose} style={actionBtn}>Cerrar</button>
+        {b("🗑 Eliminar del cruce", () => onEliminar([f]), { ...actionBtn, color: C.red })}
         <span style={{ fontSize: 11, color: est === "cambio" ? C.red : C.g500 }}>{est === "cambio" ? "Cambió desde la revisión (valores o pareja distintos). " : ""}{rec?.at ? `Último cambio: ${rec.autor || "—"} · ${fmtAt(rec.at)}` : ""}</span>
       </div>
     </div>
@@ -100,12 +101,14 @@ export default function CruceComprasWO({ user, onBack }) {
   const docs = useMemo(() => (cargado ? Object.values(data.act.docs || {}) : VACIO), [cargado, data]);
   const facturas = useMemo(() => (facRaw ? Object.entries(facRaw).map(([id, v]) => ({ ...v, id })) : null), [facRaw]);
   const filas = useMemo(() => (listo ? cruzar(facturas, docs, mes, paresDe(revN)) : VACIO), [listo, facturas, docs, mes, revN]);
-  const rs = useMemo(() => (listo ? resumenCruce(filas, docs) : null), [listo, filas, docs]);
+  const { activas, excluidas } = useMemo(() => aplicarExclusiones(filas, revN), [filas, revN]);
+  const rs = useMemo(() => (listo ? resumenCruce(activas, docs) : null), [listo, activas, docs]);
   const rvOf = (f) => estadoRev(f, revN[f.key]);
   const nRev = { aprobado: 0, observado: 0, cambio: 0, pendiente: 0 };
-  for (const f of filas) nRev[rvOf(f)]++;
+  for (const f of activas) nRev[rvOf(f)]++;
   const r0 = mes ? res[mes] : null, pc = (k) => rs?.porCat[k];
-  const lista = useMemo(() => ({ todas: filas, ...Object.fromEntries(CATS.map(([k]) => [k, filas.filter((f) => f.categoria === k)])) }), [filas]);
+  const lista = useMemo(() => ({ todas: activas, ...Object.fromEntries(CATS.map(([k]) => [k, activas.filter((f) => f.categoria === k)])), aprobados: activas.filter((f) => estadoRev(f, revN[f.key]) === "aprobado"), eliminadas: excluidas }), [activas, excluidas, revN]);
+  const elim = tab === "eliminadas";
   const base = lista[tab] ?? VACIO;
   const obsOpts = useMemo(() => [...new Set(base.map((f) => f.obs).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [base]);
 
@@ -115,21 +118,22 @@ export default function CruceComprasWO({ user, onBack }) {
       .sort((a, b) => { const x = campo(a, ord.col, rvOf), y = campo(b, ord.col, rvOf), c = numerica ? (x ?? 0) - (y ?? 0) : String(x ?? "").localeCompare(String(y ?? ""), "es", { numeric: true }); return ord.dir === "desc" ? -c : c; });
   }, [base, search, flt, ord, revN]); // eslint-disable-line react-hooks/exhaustive-deps
   const sum = (k) => vista.reduce((s, f) => s + (f[k] ?? 0), 0);
-  const COLS = [["Categoría", "categoria"], ["N.º ERP / Doc WO", "num"], ["Proveedor", "proveedor"], ["NIT", "nit"], ["Fecha", "fecha"], ["Observación", "obs"], ["Revisión", "rev"], ["Valor portal", "valorPortal", 1], ["Valor WO", "valorWO", 1], ["Diferencia", "dif", 1], ["Sugerencia", "sugerencia"]];
+  const COLS = [["Categoría", "categoria"], ["N.º ERP / Doc WO", "num"], ["Proveedor", "proveedor"], ["NIT", "nit"], ["Fecha", "fecha"], ["Observación", "obs"], ...(elim ? [["Motivo", "motivo"], ["Eliminada por", "exAutor"]] : [["Revisión", "rev"]]), ["Valor portal", "valorPortal", 1], ["Valor WO", "valorWO", 1], ["Diferencia", "dif", 1], ["Sugerencia", "sugerencia"]];
   const cel = (f, k) => {
     if (k === "categoria") return <span style={{ background: `#${CAT[f.categoria]?.c || "D9D9D9"}`, color: C.g900, borderRadius: 3, padding: "1px 6px", fontSize: 11, whiteSpace: "nowrap" }}>{CAT[f.categoria]?.n || f.categoria}</span>;
     if (k === "rev") { const e = rvOf(f), [bg, fg] = REV_COLOR[e]; return <span title={e === "cambio" ? "Cambió desde la revisión" : undefined} style={{ background: bg, color: fg, borderRadius: 3, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{REV[e]}</span>; }
     if (k === "num") return <>{f.num || "—"}{f.doc && f.doc !== normDoc(f.num) && f.id != null && <span title="Emparejada a mano con un documento de WO de otro número" style={{ color: C.blue }}> ↔ {f.doc} (manual)</span>}</>;
     if (k === "fecha") return fmtF(f.fecha);
+    if (k === "exAutor") return `${f.exAutor || "—"} · ${fmtAt(f.exAt)}`;
     if (MONEY.includes(k)) return f[k] == null ? "—" : fmt(f[k]);
     return f[k] ?? "";
   };
   const hayFlt = Object.keys(FLT0).some((k) => flt[k] !== FLT0[k]);
   const topProv = useMemo(() => { // valor sin cruzar limpio por proveedor (todo lo que no es OK)
     const m = {};
-    for (const f of filas) if (f.categoria !== "ok") m[f.proveedor || f.nit || "—"] = (m[f.proveedor || f.nit || "—"] || 0) + Math.abs((f.categoria === "soloWO" ? f.valorWO : f.categoria === "dif" ? f.dif : f.valorPortal) ?? 0);
+    for (const f of activas) if (f.categoria !== "ok") m[f.proveedor || f.nit || "—"] = (m[f.proveedor || f.nit || "—"] || 0) + Math.abs((f.categoria === "soloWO" ? f.valorWO : f.categoria === "dif" ? f.dif : f.valorPortal) ?? 0);
     return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([cli, valor]) => ({ cli, valor }));
-  }, [filas]);
+  }, [activas]);
 
   // ─── Subir reporte ───
   const procesar = async () => {
@@ -145,12 +149,23 @@ export default function CruceComprasWO({ user, onBack }) {
   const confirmar = async () => {
     setBusy(true);
     try {
-      const { wo, archivo, mes: m } = conf;
-      await guardarMesWO(dbRef.current, m, { at: new Date().toISOString(), autor: user.name, archivo, desde: wo.desde, hasta: wo.hasta, docs: wo.docs }, { n: wo.docs.length, total: wo.total });
+      const { wo, archivo, mes: m, deCero } = conf;
+      await guardarMesWO(dbRef.current, m, { at: new Date().toISOString(), autor: user.name, archivo, desde: wo.desde, hasta: wo.hasta, docs: wo.docs }, { n: wo.docs.length, total: wo.total }, existe && deCero);
       setSelM(m); setRecarga((n) => n + 1);
       showToast(`Reporte de ${mesLbl(m)} guardado`);
       setConf(null);
     } catch (err) { showToast("No se pudo guardar: " + (err.message || err)); }
+    setBusy(false);
+  };
+  const [excl, setExcl] = useState(null), [motivoE, setMotivoE] = useState(""); // filas por eliminar del cruce
+  const [borrar, setBorrar] = useState(null); // { mes, conRevision }
+  const eliminar = async () => {
+    setBusy(true);
+    try {
+      await eliminarMesWO(dbRef.current, borrar.mes, borrar.conRevision);
+      showToast(`Reporte de ${mesLbl(borrar.mes)} eliminado`);
+      setSelM(null); setFlt(FLT0); setSel(new Set()); setAbierta(null); setBorrar(null);
+    } catch (err) { showToast("No se pudo eliminar: " + (err.message || err)); }
     setBusy(false);
   };
 
@@ -161,14 +176,14 @@ export default function CruceComprasWO({ user, onBack }) {
       const k = f.key, x = { ...(k in cambios ? cambios[k] : revN[k]), ...parche, autor: user.name, at };
       if ("estado" in parche) x.firma = parche.estado ? firmaDe(f) : null;
       for (const c of Object.keys(x)) if (x[c] == null || (c === "nota" && !x[c])) delete x[c];
-      cambios[k] = x.par !== undefined || x.estado || x.nota ? x : null;
+      cambios[k] = x.par !== undefined || x.estado || x.nota || x.excluido ? x : null;
     }
     setBusy(true);
     try { await guardarRevisionWO(dbRef.current, mes, cambios); setSel(new Set()); } catch (err) { showToast("No se pudo guardar: " + (err.message || err)); }
     setBusy(false);
   };
 
-  const exportar = () => XLSX.writeFile(libroCruceWO(XLSX, { mes, filas, resumen: rs, revision: (f) => { const rc = revN[f.key]; return [REV[rvOf(f)], rc?.nota || "", rc?.autor || ""]; } }), `CruceWO_${mes}.xlsx`);
+  const exportar = () => XLSX.writeFile(libroCruceWO(XLSX, { filas: activas, facturasPorId: facRaw || {}, revision: (f) => { const rc = revN[f.key]; return [REV[rvOf(f)], rc?.nota || "", rc?.autor || ""]; } }), `CruceWO_${mes}.xlsx`);
 
   const th = { textAlign: "left", fontSize: 10, color: C.g500, textTransform: "uppercase", padding: "6px 8px", borderBottom: `1px solid ${C.g200}`, whiteSpace: "nowrap" };
   const td = { fontSize: 12, padding: "6px 8px", borderBottom: `1px solid ${C.g100}` };
@@ -206,6 +221,7 @@ export default function CruceComprasWO({ user, onBack }) {
               </select>
             )}
             <button onClick={() => setNuevo(false)} disabled={busy || !configured} style={primario}>＋ Subir reporte de compras</button>
+            {mes && <button onClick={() => setBorrar({ mes, conRevision: true })} disabled={busy} style={{ ...actionBtn, color: C.red }}>🗑 Eliminar reporte</button>}
             <button onClick={exportar} disabled={!listo} style={actionBtn}>⬇ Exportar Excel</button>
             <button onClick={() => window.print()} disabled={!listo} style={actionBtn}>🖨 Imprimir</button>
           </div>
@@ -227,7 +243,7 @@ export default function CruceComprasWO({ user, onBack }) {
                   <Kpi label="Total reporte WO" valor={corto(rs.wo)} sub={`${rs.nWO} documentos`} />
                   <Kpi label="Total facturas del portal" valor={corto(rs.portal)} sub={`${rs.nPortal} facturas en el cruce`} />
                   <Kpi label="Docs cruzados OK" valor={`${pc("ok").n} de ${rs.nWO}`} sub={`${rs.nWO ? ((pc("ok").n / rs.nWO) * 100).toFixed(1) : 0}% de los documentos de WO · ${corto(pc("ok").valor)}`} color={C.green} />
-                  <Kpi label="Revisados" valor={`${nRev.aprobado} de ${filas.length}`} sub={`${nRev.observado} observados · ${nRev.cambio} cambiaron · ${nRev.pendiente} pendientes`} color={C.green} />
+                  <Kpi label="Revisados" valor={`${nRev.aprobado} de ${activas.length}`} sub={`${nRev.observado} observados · ${nRev.cambio} cambiaron · ${nRev.pendiente} pendientes`} color={C.green} />
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
                   <Panel titulo="Valor por categoría">
@@ -267,11 +283,12 @@ export default function CruceComprasWO({ user, onBack }) {
                 </select>
                 {hayFlt && <button onClick={() => setFlt(FLT0)} style={actionBtn}>Limpiar</button>}
               </div>
-              {listo && marc.size > 0 && (
+              {listo && !elim && marc.size > 0 && (
                 <div className="no-print" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: C.blueL, border: `1px solid ${C.blue}`, borderRadius: 4, padding: "6px 10px", marginBottom: 10, fontSize: 12 }}>
-                  <b>{filas.filter((f) => marc.has(f.key)).length} seleccionados:</b>
-                  <button disabled={busy} onClick={() => guardarRev(filas.filter((f) => marc.has(f.key)).map((f) => [f, { estado: "aprobado" }]))} style={primario}>Aprobar</button>
-                  <button disabled={busy} onClick={() => guardarRev(filas.filter((f) => marc.has(f.key)).map((f) => [f, { estado: null }]))} style={actionBtn}>Volver a pendiente</button>
+                  <b>{activas.filter((f) => marc.has(f.key)).length} seleccionados:</b>
+                  <button disabled={busy} onClick={() => guardarRev(activas.filter((f) => marc.has(f.key)).map((f) => [f, { estado: "aprobado" }]))} style={primario}>Aprobar</button>
+                  <button disabled={busy} onClick={() => guardarRev(activas.filter((f) => marc.has(f.key)).map((f) => [f, { estado: null }]))} style={actionBtn}>Volver a pendiente</button>
+                  <button disabled={busy} onClick={() => { setMotivoE(""); setExcl(activas.filter((f) => marc.has(f.key))); }} style={{ ...actionBtn, color: C.red }}>Eliminar del cruce</button>
                   <button onClick={() => setSel(new Set())} style={actionBtn}>Quitar selección</button>
                 </div>
               )}
@@ -283,7 +300,7 @@ export default function CruceComprasWO({ user, onBack }) {
                   <div style={{ overflowX: "auto", maxHeight: 420, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
-                        <tr><th style={th}><input type="checkbox" title="Seleccionar las filas visibles" checked={vista.length > 0 && vista.slice(0, 500).every((f) => marc.has(f.key))} onChange={(e) => setSel(e.target.checked ? new Set([...marc, ...vista.slice(0, 500).map((f) => f.key)]) : new Set([...marc].filter((k) => !vista.some((f) => f.key === k))))} /></th>{COLS.map(([h, k, right]) => <th key={k} onClick={() => toggleSort(k)} style={{ ...th, ...(right ? { textAlign: "right" } : {}), cursor: "pointer", userSelect: "none" }}>{h} {ord.col === k ? (ord.dir === "asc" ? "▲" : "▼") : ""}</th>)}</tr>
+                        <tr><th style={th}><input type="checkbox" title="Seleccionar las filas visibles" checked={vista.length > 0 && vista.slice(0, 500).every((f) => marc.has(f.key))} onChange={(e) => setSel(e.target.checked ? new Set([...marc, ...vista.slice(0, 500).map((f) => f.key)]) : new Set([...marc].filter((k) => !vista.some((f) => f.key === k))))} /></th>{COLS.map(([h, k, right]) => <th key={k} onClick={() => toggleSort(k)} style={{ ...th, ...(right ? { textAlign: "right" } : {}), cursor: "pointer", userSelect: "none" }}>{h} {ord.col === k ? (ord.dir === "asc" ? "▲" : "▼") : ""}</th>)}{elim && <th style={th} />}</tr>
                       </thead>
                       <tbody>
                         {vista.slice(0, 500).map((f) => {
@@ -293,12 +310,13 @@ export default function CruceComprasWO({ user, onBack }) {
                               <tr onClick={() => setAbierta(abierto ? null : f.key)} style={{ background: CAT[f.categoria] ? `#${CAT[f.categoria].c}40` : undefined, cursor: "pointer" }}>
                                 <td style={td} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={marc.has(f.key)} onChange={(e) => setSel((o) => { const n = new Set(o); if (e.target.checked) n.add(f.key); else n.delete(f.key); return n; })} /></td>
                                 {COLS.map(([, k, right]) => <td key={k} style={right ? tdN : td}>{cel(f, k)}</td>)}
+                                {elim && <td style={td} onClick={(e) => e.stopPropagation()}><button disabled={busy} onClick={() => guardarRev([[f, { excluido: null, motivo: null }]])} style={actionBtn}>Restaurar</button></td>}
                               </tr>
-                              {abierto && <tr><td colSpan={COLS.length + 1} style={{ padding: "0 8px" }}><EditorFila key={f.key} f={f} rec={revN[f.key]} est={rvOf(f)} filas={filas} disabled={busy} onGuardar={(g, parche) => guardarRev([[g, parche]])} onClose={() => setAbierta(null)} /></td></tr>}
+                              {abierto && !elim && <tr><td colSpan={COLS.length + 1} style={{ padding: "0 8px" }}><EditorFila key={f.key} f={f} rec={revN[f.key]} est={rvOf(f)} filas={activas} disabled={busy} onGuardar={(g, parche) => guardarRev([[g, parche]])} onClose={() => setAbierta(null)} onEliminar={(fs) => { setMotivoE(""); setExcl(fs); }} /></td></tr>}
                             </Fragment>
                           );
                         })}
-                        {!vista.length && <tr><td colSpan={COLS.length + 1} style={{ ...td, textAlign: "center", color: C.g500 }}>Sin registros.</td></tr>}
+                        {!vista.length && <tr><td colSpan={COLS.length + 2} style={{ ...td, textAlign: "center", color: C.g500 }}>Sin registros.</td></tr>}
                       </tbody>
                     </table>
                   </div>
@@ -336,11 +354,57 @@ export default function CruceComprasWO({ user, onBack }) {
               Mes: <input type="month" value={conf.mes} onChange={(e) => setConf({ ...conf, mes: e.target.value })} style={{ fontSize: 13, padding: "2px 6px", border: `1px solid ${C.g200}`, borderRadius: 4 }} /><br />
               Documentos: <b>{conf.wo.docs.length}</b> · total <b>{fmt(conf.wo.total)}</b>
               {conf.wo.desde.slice(0, 7) !== conf.wo.hasta.slice(0, 7) && <div style={aviso(C.orangeL, C.orange)}>El periodo abarca más de un mes: verifique que sea el reporte correcto.</div>}
-              {existe && <div style={aviso(C.redL, C.red)}>Ya hay un reporte de ese mes, se reemplazará (la revisión hecha se conserva y las filas que cambien quedarán como "Cambió").</div>}
+              {existe && (
+                <div style={aviso(C.redL, C.red)}>
+                  Ya hay un reporte de ese mes ({res[conf.mes]?.archivo || "—"}): se reemplazará por completo.<br />
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                    <input type="checkbox" checked={!!conf.deCero} onChange={(e) => setConf({ ...conf, deCero: e.target.checked })} />
+                    Empezar de cero: borrar también la revisión de ese mes
+                  </label>
+                  {!conf.deCero && <span style={{ fontSize: 11 }}>La revisión se conserva; las filas que cambien quedarán como "Cambió".</span>}
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
               <button onClick={() => setConf(null)} disabled={busy} style={actionBtn}>Cancelar</button>
               <button onClick={confirmar} disabled={busy || !/^\d{4}-\d{2}$/.test(conf.mes || "")} style={primario}>{busy ? "Guardando…" : "Confirmar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {excl && (
+        <div style={overlay}>
+          <div style={{ background: C.white, borderRadius: 8, padding: 20, width: "100%", maxWidth: 460 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 15, color: C.red }}>Eliminar del cruce</h3>
+            <div style={{ fontSize: 13, color: C.g700, lineHeight: 1.7 }}>
+              {excl.length === 1 ? "1 fila" : `${excl.length} filas`}. No borra el reporte WO ni la factura del portal; se puede restaurar desde la pestaña Eliminadas.
+              <label style={{ display: "block", marginTop: 8, fontWeight: 600 }}>Motivo</label>
+              <textarea autoFocus value={motivoE} onChange={(e) => setMotivoE(e.target.value)} rows={3} style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: 6, border: `1px solid ${C.g200}`, borderRadius: 4, fontFamily: "inherit" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setExcl(null)} style={actionBtn}>Cancelar</button>
+              <button disabled={busy || !motivoE.trim()} onClick={() => { const items = excl.map((f) => [f, { excluido: true, motivo: motivoE.trim() }]); setExcl(null); setAbierta(null); guardarRev(items); }} style={{ ...actionBtn, background: C.red, color: C.white, borderColor: C.red }}>Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {borrar && (
+        <div style={overlay}>
+          <div style={{ background: C.white, borderRadius: 8, padding: 20, width: "100%", maxWidth: 460 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 15, color: C.red }}>Eliminar reporte de {mesLbl(borrar.mes)}</h3>
+            <div style={{ fontSize: 13, color: C.g700, lineHeight: 1.7 }}>
+              Archivo: {res[borrar.mes]?.archivo || "—"} · {res[borrar.mes]?.n ?? "—"} documentos<br />
+              Las facturas del portal no se tocan. No se puede deshacer.
+              <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+                <input type="checkbox" checked={borrar.conRevision} onChange={(e) => setBorrar({ ...borrar, conRevision: e.target.checked })} />
+                Borrar también la revisión de ese mes ({borrar.mes === mes ? Object.keys(revN).length : "las"} filas revisadas o emparejadas)
+              </label>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setBorrar(null)} disabled={busy} style={actionBtn}>Cancelar</button>
+              <button onClick={eliminar} disabled={busy} style={{ ...actionBtn, background: C.red, color: C.white, borderColor: C.red }}>{busy ? "Eliminando…" : "Eliminar"}</button>
             </div>
           </div>
         </div>

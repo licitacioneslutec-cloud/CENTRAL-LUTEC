@@ -74,9 +74,16 @@ export function guardarRevision(db, nk, cambios, fecha, resumen) {
 export async function leerMesWO(db, mes) {
   return (await get(ref(db, p(`cruceWO/meses/${mes}`)))).val();
 }
-// Un solo update: el reporte y su resumen juntos o ninguno (re-subir el mismo mes lo reemplaza; la revisión se conserva).
-export function guardarMesWO(db, mes, reg, resumen) {
-  return update(ref(db), JSON.parse(JSON.stringify({ [p(`cruceWO/meses/${mes}`)]: reg, [p(`cruceWO/resumen/${mes}`)]: { ...resumen, at: reg.at, autor: reg.autor, archivo: reg.archivo, desde: reg.desde, hasta: reg.hasta } })));
+// Un solo update: el reporte y su resumen juntos o ninguno (re-subir el mismo mes lo reemplaza; la revisión se conserva salvo borrarRevision).
+export function guardarMesWO(db, mes, reg, resumen, borrarRevision = false) {
+  return update(ref(db), JSON.parse(JSON.stringify({
+    [p(`cruceWO/meses/${mes}`)]: reg, [p(`cruceWO/resumen/${mes}`)]: { ...resumen, at: reg.at, autor: reg.autor, archivo: reg.archivo, desde: reg.desde, hasta: reg.hasta },
+    ...(borrarRevision ? { [p(`cruceWO/revision/${mes}`)]: null } : {}),
+  })));
+}
+// Elimina el reporte del mes (y su revisión si conRevision). Las facturas no se tocan.
+export function eliminarMesWO(db, mes, conRevision) {
+  return update(ref(db), { [p(`cruceWO/meses/${mes}`)]: null, [p(`cruceWO/resumen/${mes}`)]: null, ...(conRevision ? { [p(`cruceWO/revision/${mes}`)]: null } : {}) });
 }
 // cambios = { claveFila: registro | null }; un solo update.
 export function guardarRevisionWO(db, mes, cambios) {

@@ -8,7 +8,7 @@ export { TOLERANCIA };
 // [clave, nombre, color (Excel / interfaz)]
 export const CATS = [["ok", "OK", "83CBEB"], ["dif", "Con diferencia", "92D050"], ["noWO", "Sin documento en WO", "FFC000"], ["sinERP", "Sin N.º ERP", "FFFF00"], ["soloWO", "Solo WO", "D9D9D9"]];
 export const CAT = Object.fromEntries(CATS.map(([k, n, c]) => [k, { n, c }]));
-export const REV = { pendiente: "Pendiente", aprobado: "Aprobado", observado: "Observado", cambio: "Cambió" };
+export const REV = { pendiente: "Pendiente", aprobado: "Aprobado", observado: "Observado", cambio: "Cambió", excluido: "Excluido" };
 
 const num = (v) => (typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(",", ".")) || 0);
 const pad = (n) => String(n).padStart(2, "0");
@@ -106,7 +106,7 @@ export function resumenCruce(filas, docs) {
 // ─── Revisión: cruceWO/revision/{mes}/{key} = { par?, estado?, nota?, autor, at, firma } (key = id de la factura o "W_doc") ───
 export const firmaDe = (f) => `${f.valorPortal}|${f.valorWO}|${f.doc || ""}`;
 // una aprobación/observación cuyos valores o pareja cambiaron desde la revisión ya no vale
-export const estadoRev = (f, rec) => (!rec?.estado ? "pendiente" : rec.firma !== firmaDe(f) ? "cambio" : rec.estado);
+export const estadoRev = (f, rec) => (rec?.excluido ? "excluido" : !rec?.estado ? "pendiente" : rec.firma !== firmaDe(f) ? "cambio" : rec.estado);
 // revisión del mes → { facturaId: docWO | "" } (solo los que tienen `par`; las claves W_ nunca llevan par)
 export function paresDe(rev) {
   const o = {};
@@ -114,17 +114,33 @@ export function paresDe(rev) {
   return o;
 }
 
+
+// Exclusión: cruceWO/revision/{mes}/{key} = { excluido: true, motivo, autor, at, ...resto }: la fila sale del cruce, los totales y el Excel
+// → { activas, excluidas } (las excluidas llevan motivo, exAutor, exAt)
+export function aplicarExclusiones(filas, rev) {
+  const activas = [], excluidas = [];
+  for (const f of filas || []) { const r = rev?.[f.key]; if (r?.excluido) excluidas.push({ ...f, motivo: r.motivo || "", exAutor: r.autor || "", exAt: r.at || "" }); else activas.push(f); }
+  return { activas, excluidas };
+}
+
+// [encabezado, campo de la factura]: estructura del reporte DIAN/RADIAN
+export const RADIAN = [["Tipo de documento", "tipoDoc"], ["CUFE/CUDE", "cufe"], ["Folio", "folio"], ["Prefijo", "prefijo"], ["Divisa", "divisa"], ["Forma de Pago", "formaPago"], ["Medio de Pago", "medioPago"], ["Fecha Emisión", "fechaEmision"], ["Fecha Recepción", "fechaRecepcion"], ["NIT Emisor", "nitEmisor"], ["Nombre Emisor", "nombreEmisor"], ["NIT Receptor", "nitReceptor"], ["Nombre Receptor", "nombreReceptor"], ["IVA", "iva"], ["Total", "total"], ["Estado", "estadoDoc"], ["Grupo", "grupo"]];
+const radianDe = (fac) => RADIAN.map(([, k]) => { const v = fac?.[k]; return v == null || v === "" ? "" : k === "iva" || k === "total" ? num(v) : String(v); });
+
 const encab = ["Categoría", "N.º ERP / Doc WO", "Doc WO cruzado", "NIT", "Proveedor", "Fecha", "Observación del portal", "Valor portal", "Valor WO", "Diferencia", "Sugerencia"];
 const encabRev = ["Revisión", "Nota", "Revisado por"];
 const fila = (f, rv) => [CAT[f.categoria].n, f.num, f.doc && f.doc !== normDoc(f.num) ? f.doc : "", f.nit, f.proveedor, f.fecha, f.obs, f.valorPortal, f.valorWO, f.dif, f.sugerencia, ...(rv ? rv(f) : [])];
+// CUFE y nombres anchos; el resto, 14
+const ANCHOS = { 1: 70, 10: 40, 12: 40, 21: 40, 23: 40, 27: 50, 29: 30 };
 
-// La librería xlsx instalada no escribe colores: una hoja por categoría y una completa con la columna Categoría
-// revision(f) → [Revisión, Nota, Revisado por] (opcional)
-export function libroCruceWO(X, { mes, filas, resumen, revision }) {
-  const wb = X.utils.book_new(), hoja = (n, aoa) => X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(aoa), n);
-  hoja("Resumen", [["Mes", mes], [], ["Total reporte WO", resumen.wo], ["Total facturas del portal (cruce)", resumen.portal], [], ["Categoría", "Docs", "Valor"], ...CATS.map(([k, n]) => [n, resumen.porCat[k].n, resumen.porCat[k].valor])]);
-  const eh = revision ? [...encab, ...encabRev] : encab;
-  hoja("Todas", [eh, ...filas.map((f) => fila(f, revision))]);
-  for (const [k, n] of CATS) hoja(n, [eh, ...filas.filter((f) => f.categoria === k).map((f) => fila(f, revision))]);
+// Una sola hoja "Hoja1": columnas RADIAN (de facturasPorId[f.id]; vacías en "Solo WO") + las del cruce. `filas` = solo las activas.
+// La librería xlsx instalada no escribe colores ni negritas. revision(f) → [Revisión, Nota, Revisado por] (opcional)
+export function libroCruceWO(X, { filas, facturasPorId, revision }) {
+  const vacio = RADIAN.map(() => ""), wb = X.utils.book_new();
+  const aoa = [[...RADIAN.map(([h]) => h), ...encab, ...(revision ? encabRev : [])], ...filas.map((f) => [...(f.id != null && facturasPorId?.[f.id] ? radianDe(facturasPorId[f.id]) : vacio), ...fila(f, revision)])];
+  const ws = X.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = aoa[0].map((_, i) => ({ wch: ANCHOS[i] || 14 }));
+  ws["!autofilter"] = { ref: X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: aoa[0].length - 1 } }) };
+  X.utils.book_append_sheet(wb, ws, "Hoja1");
   return wb;
 }

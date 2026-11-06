@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
-import { normDoc, fechaISO, leerComprasWO, cruzar, resumenCruce, libroCruceWO, firmaDe, estadoRev, paresDe, CATS, TOLERANCIA } from "./cruceWO.js";
+import { normDoc, fechaISO, leerComprasWO, cruzar, resumenCruce, libroCruceWO, aplicarExclusiones, RADIAN, firmaDe, estadoRev, paresDe, CATS, TOLERANCIA } from "./cruceWO.js";
 
 const libro = (aoa) => { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "ExportarAExcel"); return XLSX.read(XLSX.write(wb, { type: "array", bookType: "xlsx" }), { cellDates: true }); };
 
@@ -65,8 +65,33 @@ const fb = fl.find((x) => x.id === "b"), rec = { estado: "aprobado", firma: firm
 assert.deepEqual([estadoRev(fb, undefined), estadoRev(fb, rec), estadoRev({ ...fb, valorWO: 1 }, rec), estadoRev(fb, { nota: "x" })], ["pendiente", "aprobado", "cambio", "pendiente"]);
 assert.deepEqual(paresDe({ e: { par: "CR 21005" }, h: { par: "" }, b: { estado: "aprobado" } }), { e: "CR 21005", h: "" });
 assert.deepEqual(paresDe(undefined), {});
-const lib = libroCruceWO(XLSX, { mes: "2026-10", filas: fl, resumen: r, revision: () => ["Aprobado", "n", "Ana"] });
-assert.equal(lib.SheetNames.length, 2 + CATS.length); assert.equal(lib.Sheets.Todas["L1"].v, "Revisión");
+// ─── exclusiones ───
+const exRev = { b: { excluido: true, motivo: "no va", autor: "Ana", at: "x", par: "FC 963" }, "W_CR 21005": { excluido: true, motivo: "no registrada" }, c: { estado: "aprobado", firma: "viejo" } };
+const { activas, excluidas } = aplicarExclusiones(fl, exRev);
+assert.equal(activas.length + excluidas.length, fl.length); assert.deepEqual(excluidas.map((x) => x.key).sort(), ["W_CR 21005", "b"]);
+assert.deepEqual([excluidas.find((x) => x.key === "b").motivo, excluidas.find((x) => x.key === "b").exAutor], ["no va", "Ana"]);
+assert.equal(estadoRev(fb, exRev.b), "excluido"); // una excluida no cuenta como "cambio"
+const r2 = resumenCruce(activas, W.docs);
+assert.equal(r2.nDocs, fl.length - 2); assert.equal(r2.porCat.ok.n, r.porCat.ok.n - 1); assert.equal(r2.porCat.soloWO.n, r.porCat.soloWO.n - 1); assert.equal(r2.nPortal, r.nPortal - 1);
+assert.equal(aplicarExclusiones(fl, { ...exRev, b: { par: "FC 963" }, "W_CR 21005": undefined }).activas.length, fl.length); // restaurar: vuelve
+assert.equal(aplicarExclusiones(fl, undefined).excluidas.length, 0);
+// pestaña Aprobados = activas con estadoRev "aprobado" (sin "cambio" ni eliminadas)
+const aprobRev = { b: { estado: "aprobado", firma: firmaDe(fb) }, c: { estado: "aprobado", firma: "viejo" }, d: { estado: "aprobado", firma: firmaDe(fl.find((x) => x.id === "d")) } };
+const revAp = { ...aprobRev, d: { ...aprobRev.d, excluido: true } };
+const apr = aplicarExclusiones(fl, revAp).activas.filter((f) => estadoRev(f, revAp[f.key]) === "aprobado").map((f) => f.id);
+assert.deepEqual(apr, ["b"]);
+// ─── libro RADIAN: una hoja, 17 encabezados exactos + columnas del cruce ───
+const HRAD = ["Tipo de documento", "CUFE/CUDE", "Folio", "Prefijo", "Divisa", "Forma de Pago", "Medio de Pago", "Fecha Emisión", "Fecha Recepción", "NIT Emisor", "Nombre Emisor", "NIT Receptor", "Nombre Receptor", "IVA", "Total", "Estado", "Grupo"];
+assert.deepEqual(RADIAN.map(([h]) => h), HRAD);
+const facP = { b: { tipoDoc: "Factura electrónica", cufe: "abc123", folio: "7018", prefijo: "FEPR", fechaEmision: "10-10-2026", nitEmisor: "222", iva: 19, total: 200.5, estadoDoc: "Aprobado", grupo: "Recibido", formaPago: "1" } };
+const lib = libroCruceWO(XLSX, { mes: "2026-10", filas: activas, facturasPorId: facP, revision: () => ["Aprobado", "n", "Ana"] });
+assert.deepEqual(lib.SheetNames, ["Hoja1"]);
+const aoa = XLSX.utils.sheet_to_json(lib.Sheets.Hoja1, { header: 1, defval: "" });
+assert.deepEqual(aoa[0].slice(0, 17), HRAD); assert.equal(aoa[0][17], "Categoría"); assert.equal(aoa[0].at(-3), "Revisión"); assert.equal(aoa.length, activas.length + 1);
+const libB = XLSX.utils.sheet_to_json(libroCruceWO(XLSX, { filas: fl, facturasPorId: facP }).Sheets.Hoja1, { header: 1, defval: "" });
+const rb = libB.find((x) => x[17] === "OK" && x[1] === "abc123"); assert.ok(rb); assert.deepEqual([rb[1], rb[14], rb[13], rb[2]], ["abc123", 200.5, 19, "7018"]);
+const rw = libB.find((x) => x[17] === "Solo WO"); assert.deepEqual(rw.slice(0, 17), HRAD.map(() => "")); assert.ok(rw[18]);
+assert.equal(libB[0].length, 17 + 11);
 console.log("OK sintético");
 
 // ─── archivos reales ───
