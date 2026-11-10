@@ -12,7 +12,7 @@ const dia = (at) => (at ? new Date(at).toLocaleDateString("sv") : ""); // YYYY-M
 const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
 
 // Vista de historial (solo admin). recent = últimas 200 entradas en vivo; "Cargar más" trae páginas anteriores con endBefore.
-export default function HistorialContratos({ db, recent, onClose }) {
+export default function HistorialContratos({ db, recent, onClose, raiz = "contratos" }) {
   const [older, setOlder] = useState([]);
   const [fin, setFin] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -30,7 +30,7 @@ export default function HistorialContratos({ db, recent, onClose }) {
   const cargarMas = async () => {
     setCargando(true);
     try {
-      const mas = await masHistorial(db, todas[todas.length - 1].id, PAGINA);
+      const mas = await masHistorial(db, todas[todas.length - 1].id, PAGINA, raiz);
       setOlder((o) => [...o, ...mas]);
       if (mas.length < PAGINA) setFin(true);
     } catch (e) { alert("No se pudo cargar: " + (e.message || e)); }
@@ -42,7 +42,7 @@ export default function HistorialContratos({ db, recent, onClose }) {
       ...filas.map((h) => [fmtAt(h.at), h.usuario, h.accion, h.hoja, h.contrato, h.detalle, h.campo, h.antes, h.despues].map((v) => v ?? ""))];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Historial");
-    XLSX.writeFile(wb, `Historial_Contratos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `Historial_${raiz}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const campo = (k, ph, lista) => (

@@ -12,12 +12,12 @@ export const MODO_PRUEBA = import.meta.env?.VITE_CONTRATOS_PRUEBA === "1";
 export const p = (ruta) => (MODO_PRUEBA ? "pruebas/" : "") + ruta;
 
 // Calls cb({excel, notas, alias}) whenever any path changes. Returns a combined unsubscribe fn.
-export function subscribeContratos(db, cb) {
+export function subscribeContratos(db, cb, raiz = "contratos") {
   let excel = null, notas = null, alias = null;
   const emit = () => cb({ excel, notas, alias });
-  const u1 = onValue(ref(db, p("contratosExcel")), (s) => { excel = s.val(); emit(); });
-  const u2 = onValue(ref(db, p("contratosNotas")), (s) => { notas = s.val(); emit(); });
-  const u3 = onValue(ref(db, p("contratosAlias")), (s) => { alias = s.val(); emit(); });
+  const u1 = onValue(ref(db, p(`${raiz}Excel`)), (s) => { excel = s.val(); emit(); });
+  const u2 = onValue(ref(db, p(`${raiz}Notas`)), (s) => { notas = s.val(); emit(); });
+  const u3 = onValue(ref(db, p(`${raiz}Alias`)), (s) => { alias = s.val(); emit(); });
   return () => { u1(); u2(); u3(); };
 }
 
@@ -26,7 +26,7 @@ export function aplicarCambios(db, upd) {
   return update(ref(db), Object.fromEntries(Object.entries(upd).map(([k, v]) => [p(k), v])));
 }
 
-export const nuevoId = (db) => push(ref(db, p("contratosHistorial"))).key;
+export const nuevoId = (db) => push(ref(db, p("contratosHistorial"))).key; // solo genera una clave push (cronológica)
 
 // ─── Permisos ───
 export const subscribePermisos = (db, userId, cb) => onValue(ref(db, p(`contratosPermisos/${userId}`)), (s) => cb(s.val()));
@@ -40,16 +40,19 @@ export async function listarHojas(db) {
 
 // ─── Historial (las claves push son cronológicas: orden por clave) ───
 const filasHist = (s) => { const r = []; s.forEach((x) => { r.push({ ...x.val(), id: x.key }); }); return r.reverse(); }; // más reciente primero
-export const subscribeHistorial = (db, n, cb) => onValue(query(ref(db, p("contratosHistorial")), orderByKey(), limitToLast(n)), (s) => cb(filasHist(s)));
-export async function masHistorial(db, antesDeId, n) {
-  return filasHist(await get(query(ref(db, p("contratosHistorial")), orderByKey(), endBefore(antesDeId), limitToLast(n))));
+export const subscribeHistorial = (db, n, cb, raiz = "contratos") => onValue(query(ref(db, p(`${raiz}Historial`)), orderByKey(), limitToLast(n)), (s) => cb(filasHist(s)));
+export async function masHistorial(db, antesDeId, n, raiz = "contratos") {
+  return filasHist(await get(query(ref(db, p(`${raiz}Historial`)), orderByKey(), endBefore(antesDeId), limitToLast(n))));
 }
 
 // Solo modo prueba: copia contratosExcel y contratosAlias de producción (solo lectura, sin prefijo) a pruebas/.
-export async function copiarProdAPrueba(db) {
+export async function copiarProdAPrueba(db, raiz = "contratos") {
   if (!MODO_PRUEBA) throw new Error("Solo disponible en modo prueba");
-  for (const ruta of ["contratosExcel", "contratosAlias"]) {
+  for (const ruta of [`${raiz}Excel`, `${raiz}Alias`, ...(raiz === "contratos" ? ["contratosSeguimiento"] : [])]) {
     const v = (await get(ref(db, ruta))).val();
     await set(ref(db, p(ruta)), v ?? null);
   }
 }
+
+// ─── Seguimiento de contratos por entrar (contratosSeguimiento/{segKey}) ───
+export const subscribeSeguimiento = (db, cb) => onValue(ref(db, p("contratosSeguimiento")), (s) => cb(s.val() || {}));

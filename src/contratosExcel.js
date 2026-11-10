@@ -2,6 +2,27 @@
 // Funciones puras (sin React ni Firebase) para poder probarlas en node: contratosExcel.check.js
 import * as XLSX from "xlsx";
 
+// "YYYY-MM-DD" -> serial de Excel (null si no es fecha).
+export const serial = (s) => {
+  const [y, m, d] = String(s ?? "").split("-").map(Number);
+  return y && m && d ? Math.round(Date.UTC(y, m - 1, d) / 86400000) + 25569 : null;
+};
+// Columnas calculadas: v(fila, x) = valor (x = {hoy: serial, smmlv}); f(L, n) = fórmula de Excel (L(key) = letra de columna).
+// req = campos necesarios; sin ellos la celda queda vacía. z = formato numérico.
+const plazo = (r) => serial(r.fechaFin) - serial(r.fechaInicio);
+export const CALC = {
+  dias: { req: ["fechaInicio", "fechaFin"], z: "0", v: plazo, f: (L, n) => `${L("fechaFin")}${n}-${L("fechaInicio")}${n}` },
+  meses: (div) => ({ req: ["fechaInicio", "fechaFin"], z: "0.0", v: (r) => plazo(r) / div, f: (L, n) => `${L("dias")}${n}/${div}` }),
+  diasEj: { req: ["fechaInicio", "fechaFin"], z: "0", v: (r, x) => serial(r.fechaFin) - x.hoy, f: (L, n) => `${L("fechaInicio")}${n}+${L("dias")}${n}-TODAY()` },
+};
+// Valor de una columna calculada para mostrar en pantalla ("—" si no aplica).
+export function valorCalc(f, fila, x) {
+  if (f.req.some((k) => !serial(fila[k]))) return "—";
+  const v = f.v(fila, x);
+  if (v == null || !isFinite(v)) return "—";
+  return f.z.includes("%") ? `${Math.round(v * 100)}%` : f.z === "0.0" ? v.toFixed(1) : f.z === "0.00" ? v.toFixed(2) : Math.round(v);
+}
+
 // Única definición de columnas (carga, formulario y export). tipo: text|number|date|calc.
 // calc = T/U/V: no se guardan, se calculan (en el export salen como fórmulas).
 export const CAMPOS = [
@@ -19,9 +40,9 @@ export const CAMPOS = [
   { key: "rete", h: "RETE-GARANTIA", tipo: "number", w: 19 },
   { key: "fechaInicio", h: "FECHA DE INICIACIÓN mm/aaaa", tipo: "date", w: 26 },
   { key: "fechaFin", h: "FECHA DE TERMINACIÓN mm/aaaa", tipo: "date", w: 26 },
-  { key: "dias", h: "TIEMPO DE EJECUCIÓN EN DÍAS", tipo: "calc", w: 15 },
-  { key: "meses", h: "TIEMPO DE EJECUCIÓN EN MESES", tipo: "calc", w: 15 },
-  { key: "diasEj", h: "DÍAS DE EJECUCIÓN", tipo: "calc", w: 15 },
+  { key: "dias", h: "TIEMPO DE EJECUCIÓN EN DÍAS", tipo: "calc", w: 15, ...CALC.dias },
+  { key: "meses", h: "TIEMPO DE EJECUCIÓN EN MESES", tipo: "calc", w: 15, ...CALC.meses(30) },
+  { key: "diasEj", h: "DÍAS DE EJECUCIÓN", tipo: "calc", w: 15, ...CALC.diasEj },
   { key: "estado", h: "ESTADO DE LA OBRA", tipo: "text", w: 18 },
   { key: "observaciones", h: "OBSERVACIONES", tipo: "text", w: 28 },
   { key: "contactoNombre", h: "NOMBRE DE CONTACTO", tipo: "text", w: 28 },
@@ -38,12 +59,22 @@ export const MODIFICA = ["TIEMPO", "VALOR", "TIEMPO Y VALOR"];
 const sinTilde = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
 export const norm = (s) => sinTilde(s).toUpperCase().replace(/\s+/g, " ").trim();
 // Encabezado normalizado: sin tildes, mayúsculas, sin "mm/aaaa", guiones como espacio.
-const nh = (s) => norm(s).replace(/MM\/AAAA/g, "").replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
-const POR_ENCABEZADO = new Map([...CAMPOS, MOD, HOJA].map((f) => [nh(f.h), f]));
+export const nh = (s) => norm(s).replace(/MM\/AAAA/g, "").replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
+
+// Configuración del módulo Contratos (Cuadro de Experiencia). Experiencia Contratistas usa otra (experienciaExcel.js).
+// raiz = prefijo de rutas RTDB ({raiz}Excel, {raiz}Notas, {raiz}Alias, {raiz}Historial).
+export const CONTRATOS = {
+  raiz: "contratos", campos: CAMPOS, archivo: "Contratos_LUTEC",
+  grupo: (c) => c.hoja, porHoja: true, precarga: ["encargado", "entidad", "nit"],
+  etiqueta: "Contratos", titulo: "Vencimientos de Contratos", hojaLabel: "Hoja / constructora", grupoLabel: "constructora",
+  vacio: "Aún no hay contratos: use \"Subir Excel\" con el Cuadro de Experiencia.",
+  subtitulo: (c) => c.base.entidad,
+  cols: [["Encargado", (c) => c.base.encargado], ["Observación", (c) => [...c.filas].reverse().map((f) => f.observaciones).find((v) => String(v || "").trim()) || ""]],
+};
 
 const pad = (n) => String(n).padStart(2, "0");
 
-function aFecha(v) {
+export function aFecha(v) {
   let y, m, d, x;
   if (v instanceof Date) {
     if (isNaN(v)) return null;
@@ -82,22 +113,33 @@ function aValor(f, v) {
 
 // ─── leerCuadro(arrayBuffer) → { filas, hojas, avisos } ───
 // filas: [{ hoja, orden, ...campos }] solo con campos no vacíos. Encabezados por nombre, nunca por posición.
-export function leerCuadro(buf) {
+// smmlv: {año: salario} si el libro trae la hoja SMMLV (Experiencia Contratistas), si no null.
+export function leerCuadro(buf, cfg = CONTRATOS) {
   const wb = XLSX.read(buf, { type: "array", cellDates: true, sheetRows: 2000 });
+  const porEnc = new Map([...cfg.campos, MOD, HOJA].map((f) => [nh(f.h), f]));
+  const fTipo = cfg.campos.find((f) => f.key === "tipo");
   const filas = [], hojas = [], avisos = [], sinHoja = [];
+  let smmlv = null;
   wb.SheetNames.forEach((name, si) => {
     const hoja = name.trim();
-    if (/^(PLANTILLA|SMMLV)$/i.test(hoja)) { avisos.push(`Hoja "${hoja}" omitida (no es una constructora).`); return; }
     const ws = wb.Sheets[name];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+    if (/^SMMLV$/i.test(hoja)) {
+      for (const r of rows) { const i = r.findIndex((v) => Number.isInteger(v) && v > 1950 && v < 2200); if (i >= 0 && typeof r[i + 1] === "number") (smmlv ||= {})[r[i]] = r[i + 1]; }
+      return;
+    }
+    if (/^PLANTILLA$/i.test(hoja)) { avisos.push(`Hoja "${hoja}" omitida (plantilla).`); return; }
     const hi = rows.slice(0, 20).findIndex((r) => {
       const hs = r.map(nh);
       return hs.includes("CONTRATO") && hs.includes("OBJETO");
     });
     if (hi < 0) { avisos.push(`Hoja "${hoja}" omitida: no se encontró la fila de encabezados (CONTRATO y OBJETO).`); return; }
     const cols = []; // [indiceColumna, campo]
-    rows[hi].forEach((h, i) => { const f = h !== null && POR_ENCABEZADO.get(nh(h)); if (f) cols.push([i, f]); });
-    const faltan = CAMPOS.filter((f) => !cols.some(([, g]) => g === f)).map((f) => f.key === "dias" || f.tipo === "calc" ? null : f.h).filter(Boolean);
+    rows[hi].forEach((h, i) => { const f = h !== null && porEnc.get(nh(h)); if (f) cols.push([i, f]); });
+    // Sin encabezado TIPO: la columna sin título justo después de CONTRATO es el TIPO (formato Experiencia Contratistas).
+    const iC = rows[hi].findIndex((h) => nh(h) === "CONTRATO");
+    if (fTipo && !cols.some(([, f]) => f === fTipo) && iC >= 0 && !String(rows[hi][iC + 1] ?? "").trim()) cols.push([iC + 1, fTipo]);
+    const faltan = cfg.campos.filter((f) => !f.opcional && f.tipo !== "calc" && !cols.some(([, g]) => g === f)).map((f) => f.h);
     if (faltan.length) avisos.push(`Hoja "${hoja}": faltan columnas ${faltan.join(", ")}.`);
     const full = ws["!fullref"];
     if (full && XLSX.utils.decode_range(full).e.r >= 2000) avisos.push(`Hoja "${hoja}": solo se leyeron las primeras 2000 filas.`);
@@ -119,7 +161,7 @@ export function leerCuadro(buf) {
     else { hojas.push(hoja); sinHoja.push(hoja); filas.slice(ini).forEach((f) => { f._sinHoja = true; }); } // sin columna HOJA: ver ubicarHojas
     if (!n) avisos.push(`Hoja "${hoja}": sin filas de datos.`);
   });
-  return { filas, hojas, avisos, sinHoja };
+  return { filas, hojas, avisos, sinHoja, smmlv };
 }
 
 // ─── Contratos ───
@@ -255,22 +297,22 @@ export function etiquetaOtrosi(contrato) {
 // Cambios (un solo update en la raíz de RTDB) para pasar a `dst` todo el contrato `src` o, con idx, solo esa fila.
 // Contrato completo (o con una sola fila): borra src, guarda alias src→dst y mueve sus comentarios (nuevoId() = push key).
 // contratos/notas = valores de contratosExcel/contratos y contratosNotas.
-export function planMover(contratos, notas, src, dst, idx, nuevoId) {
+export function planMover(contratos, notas, src, dst, idx, nuevoId, raiz = "contratos") {
   const s = desdeDb(src, contratos[src]), d = desdeDb(dst, contratos[dst]);
   const S = s.filas, D = d.filas;
   const todo = idx == null || S.length < 2;
   // Si el CONTRATO del origen es una etiqueta de otrosí/liquidación, sus filas toman esa etiqueta como TIPO y el contrato del destino.
   const eti = etiquetaOtrosi(s.contrato);
   const mover = (todo ? S : [S[idx]]).map((f) => (eti ? { ...f, ...(esBase(f) ? { tipo: eti } : {}), contrato: d.contrato || f.contrato } : f));
-  const upd = { [`contratosExcel/contratos/${dst}/filas`]: unirFilas(D, mover) };
-  if (!todo) return { ...upd, [`contratosExcel/contratos/${src}/filas`]: S.filter((_, i) => i !== idx) };
-  upd[`contratosExcel/contratos/${src}`] = null;
-  upd[`contratosAlias/${src}`] = dst;
+  const upd = { [`${raiz}Excel/contratos/${dst}/filas`]: unirFilas(D, mover) };
+  if (!todo) return { ...upd, [`${raiz}Excel/contratos/${src}/filas`]: S.filter((_, i) => i !== idx) };
+  upd[`${raiz}Excel/contratos/${src}`] = null;
+  upd[`${raiz}Alias/${src}`] = dst;
   const n = notas?.[src];
   if (n) {
-    for (const m of Object.values(n.comentarios || {})) upd[`contratosNotas/${dst}/comentarios/${nuevoId()}`] = m;
-    if (n.fechaCompromiso && !notas[dst]?.fechaCompromiso) upd[`contratosNotas/${dst}/fechaCompromiso`] = n.fechaCompromiso;
-    upd[`contratosNotas/${src}`] = null;
+    for (const m of Object.values(n.comentarios || {})) upd[`${raiz}Notas/${dst}/comentarios/${nuevoId()}`] = m;
+    if (n.fechaCompromiso && !notas[dst]?.fechaCompromiso) upd[`${raiz}Notas/${dst}/fechaCompromiso`] = n.fechaCompromiso;
+    upd[`${raiz}Notas/${src}`] = null;
   }
   return upd;
 }
@@ -323,7 +365,7 @@ export function siguienteOrden(contratos, hoja) {
 // Fila nueva (otrosí/liquidación) copiando los campos identificadores de la fila base.
 export function filaNueva(base, filas, liquidacion) {
   const f = { tipo: liquidacion ? "LIQUIDACIÓN" : `OTROSÍ No. ${filas.filter(esOtrosi).length + 1}` };
-  for (const k of ["encargado", "entidad", "nit", "proyecto", "direccion", "localizacion", "contrato"]) if (base[k]) f[k] = base[k];
+  for (const k of ["contratista", "encargado", "entidad", "nit", "proyecto", "direccion", "localizacion", "contrato"]) if (base[k]) f[k] = base[k];
   f.modifica = inferirModifica(f);
   return f;
 }
@@ -340,15 +382,10 @@ export function diasEntre(ini, fin) {
 // contenido: "completo" = contrato con otrosíes y liquidaciones | "general" = una fila por contrato (fila base con valor,
 // fecha de terminación y estado vigentes). Siempre termina con la columna MODIFICA.
 const MONEY = '_-"$"* #,##0_-;\\-"$"* #,##0_-;_-"$"* "-"??_-;_-@_-';
-const serial = (s) => {
-  const [y, m, d] = String(s).split("-").map(Number);
-  return y ? Math.round(Date.UTC(y, m - 1, d) / 86400000) + 25569 : null;
-};
-
-export function construirLibro(contratos, { formato = "hoja", contenido = "completo" } = {}) {
+// cfg.campos con opcional: true (FIC, RETE-GARANTÍA) solo salen en una hoja si alguna fila de esa hoja tiene valor.
+// opts.smmlv ({año: salario}) agrega la hoja SMMLV que usan las fórmulas de Experiencia Contratistas.
+export function construirLibro(contratos, { formato = "hoja", contenido = "completo", smmlv = null } = {}, cfg = CONTRATOS) {
   const unica = formato === "unica";
-  const cols = [...(unica ? [HOJA] : []), ...CAMPOS, MOD];
-  const L = (k) => XLSX.utils.encode_col(cols.findIndex((f) => f.key === k));
   const porHoja = new Map();
   [...contratos].sort((a, b) => (unica ? a.hoja.localeCompare(b.hoja) : 0) || a.orden - b.orden).forEach((c) => {
     const h = unica ? "Contratos" : c.hoja;
@@ -357,33 +394,33 @@ export function construirLibro(contratos, { formato = "hoja", contenido = "compl
   });
   const wb = XLSX.utils.book_new();
   const usados = new Set();
-  const hoy = Math.floor(Date.now() / 86400000) + 25569;
+  const x = { hoy: Math.floor(Date.now() / 86400000) + 25569, smmlv: smmlv || {} };
+  const vacio = (v) => v === undefined || v === null || v === "";
 
   for (const [hoja, cs] of porHoja) {
+    const filasDe = (c) => (contenido === "general" ? [{ ...c.base, valor: c.valorVigente, fechaFin: c.fechaFinVigente, estado: c.estadoVigente }] : c.filas);
+    const todas = cs.flatMap((c) => filasDe(c).map((f) => ({ ...f, _hoja: c.hoja })));
+    const cols = [...(unica ? [HOJA] : []), ...cfg.campos.filter((f) => !f.opcional || todas.some((r) => !vacio(r[f.key]))), MOD];
+    const L = (k) => XLSX.utils.encode_col(cols.findIndex((f) => f.key === k));
     const ws = {};
     cols.forEach((f, i) => { ws[XLSX.utils.encode_cell({ r: 0, c: i })] = { t: "s", v: f.h }; });
     let r = 1;
-    for (const c of cs) {
-      const filas = contenido === "general" ? [{ ...c.base, valor: c.valorVigente, fechaFin: c.fechaFinVigente, estado: c.estadoVigente }] : c.filas;
-      for (const f0 of filas) {
-        const fila = { ...f0, _hoja: c.hoja };
-        cols.forEach((f, i) => {
-          const v = fila[f.key];
-          if (f.tipo === "calc" || v === undefined || v === null || v === "") return;
-          const ref = XLSX.utils.encode_cell({ r, c: i });
-          if (f.tipo === "date") { const s = serial(v); if (s) ws[ref] = { t: "n", v: s, z: "d/mm/yyyy" }; }
-          else if (f.tipo === "number") ws[ref] = { t: "n", v: Number(v), z: MONEY };
-          else ws[ref] = { t: "s", v: String(v) };
-        });
-        if (fila.fechaInicio && fila.fechaFin) {
-          const n = r + 1, ini = serial(fila.fechaInicio), fin = serial(fila.fechaFin);
-          const put = (k, cell) => { ws[L(k) + n] = cell; };
-          put("dias", { t: "n", f: `${L("fechaFin")}${n}-${L("fechaInicio")}${n}`, v: fin - ini, z: "0" });
-          put("meses", { t: "n", f: `${L("dias")}${n}/30`, v: (fin - ini) / 30, z: "0.0" });
-          put("diasEj", { t: "n", f: `${L("fechaInicio")}${n}+${L("dias")}${n}-TODAY()`, v: fin - hoy, z: "0" });
+    for (const fila of todas) {
+      cols.forEach((f, i) => {
+        const v = fila[f.key];
+        const ref = XLSX.utils.encode_cell({ r, c: i });
+        if (f.tipo === "calc") {
+          if (f.req.some((k) => !serial(fila[k]))) return;
+          const val = f.v(fila, x);
+          ws[ref] = { t: "n", f: f.f(L, r + 1), v: val != null && isFinite(val) ? val : 0, z: f.z };
+          return;
         }
-        r++;
-      }
+        if (vacio(v)) return;
+        if (f.tipo === "date") { const s = serial(v); if (s) ws[ref] = { t: "n", v: s, z: "d/mm/yyyy" }; }
+        else if (f.tipo === "number") ws[ref] = { t: "n", v: Number(v), z: f.z || MONEY };
+        else ws[ref] = { t: "s", v: String(v) };
+      });
+      r++;
     }
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(r - 1, 0), c: cols.length - 1 } });
     ws["!cols"] = cols.map((f) => ({ wch: f.w }));
@@ -392,6 +429,10 @@ export function construirLibro(contratos, { formato = "hoja", contenido = "compl
     for (let n = 2; usados.has(name.toLowerCase()); n++) name = name.slice(0, 28).trim() + " " + n;
     usados.add(name.toLowerCase());
     XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+  if (smmlv && !usados.has("smmlv")) {
+    const aoa = [["Año", "Salario Mínimo"], ...Object.entries(smmlv).sort((a, b) => b[0] - a[0]).map(([y, v]) => [Number(y), v])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "SMMLV");
   }
   return wb;
 }
@@ -415,30 +456,31 @@ export function permisosContratos(user, registro) {
 // ─── Historial + cambios multi-path ───
 // Cada plan* devuelve un objeto para un único update en la RAÍZ de RTDB (rutas sin prefijo de prueba: aplicarCambios lo agrega),
 // que incluye su registro en contratosHistorial/{pushId}. ctx = { usuario, nuevoId() -> pushId, at? }.
-const CX = "contratosExcel/contratos/";
+const rz = (ctx) => ctx.raiz || "contratos";
+const cx = (ctx) => `${rz(ctx)}Excel/contratos/`;
 const limpia = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const hist = (ctx, accion, c, extra = {}) => ({
-  [`contratosHistorial/${ctx.nuevoId()}`]: limpia({ at: ctx.at || new Date().toISOString(), usuario: ctx.usuario, accion, hoja: c.hoja, contratoKey: c.key, contrato: c.contrato, ...extra }),
+  [`${rz(ctx)}Historial/${ctx.nuevoId()}`]: limpia({ at: ctx.at || new Date().toISOString(), usuario: ctx.usuario, accion, hoja: c.hoja, contratoKey: c.key, contrato: c.contrato, ...extra }),
 });
 const nombreFila = (f) => (f && f.tipo && f.tipo.trim() !== "---" ? f.tipo : "Contrato");
 
 export const filaSinIndice = (filas, idx) => filas.filter((_, i) => i !== idx);
 
 export function planEditarCampo(c, idx, campo, antes, despues, ctx) {
-  return { [`${CX}${c.key}/filas/${idx}/${campo}`]: despues ?? null, ...hist(ctx, "editar campo", c, { campo, antes: antes ?? null, despues: despues ?? null, detalle: `${nombreFila(c.filas?.[idx])} (fila ${idx + 1})` }) };
+  return { [`${cx(ctx)}${c.key}/filas/${idx}/${campo}`]: despues ?? null, ...hist(ctx, "editar campo", c, { campo, antes: antes ?? null, despues: despues ?? null, detalle: `${nombreFila(c.filas?.[idx])} (fila ${idx + 1})` }) };
 }
 
 export function planCrearContrato(key, data, ctx) {
-  return { [CX + key]: data, ...hist(ctx, "crear contrato", { key, hoja: data.hoja, contrato: data.contrato }) };
+  return { [cx(ctx) + key]: data, ...hist(ctx, "crear contrato", { key, hoja: data.hoja, contrato: data.contrato }) };
 }
 
 export function planAgregarFila(c, idx, fila, ctx) {
-  return { [`${CX}${c.key}/filas/${idx}`]: fila, ...hist(ctx, "agregar otrosí/liquidación", c, { detalle: fila.tipo }) };
+  return { [`${cx(ctx)}${c.key}/filas/${idx}`]: fila, ...hist(ctx, "agregar otrosí/liquidación", c, { detalle: fila.tipo }) };
 }
 
 export function planEliminarContrato(contratos, key, ctx) {
   const c = desdeDb(key, contratos[key]);
-  return { [CX + key]: null, ...hist(ctx, "eliminar contrato", c, { detalle: `${c.filas.length} fila(s)` }) };
+  return { [cx(ctx) + key]: null, ...hist(ctx, "eliminar contrato", c, { detalle: `${c.filas.length} fila(s)` }) };
 }
 
 // Quita una fila; si era la única elimina el contrato.
@@ -446,14 +488,14 @@ export function planEliminarFila(contratos, key, idx, ctx) {
   const c = desdeDb(key, contratos[key]);
   if (!c.filas[idx]) throw new Error("La fila no existe");
   if (c.filas.length < 2) return planEliminarContrato(contratos, key, ctx);
-  return { [`${CX}${key}/filas`]: filaSinIndice(c.filas, idx), ...hist(ctx, "eliminar fila", c, { detalle: `${nombreFila(c.filas[idx])} (fila ${idx + 1})` }) };
+  return { [`${cx(ctx)}${key}/filas`]: filaSinIndice(c.filas, idx), ...hist(ctx, "eliminar fila", c, { detalle: `${nombreFila(c.filas[idx])} (fila ${idx + 1})` }) };
 }
 
 // Borra todos los contratos de la hoja (las notas no se tocan).
 export function planEliminarHoja(contratos, hoja, ctx) {
   const claves = Object.keys(contratos).filter((k) => contratos[k].hoja === hoja);
   if (!claves.length) throw new Error("La constructora no tiene contratos");
-  const upd = Object.fromEntries(claves.map((k) => [CX + k, null]));
+  const upd = Object.fromEntries(claves.map((k) => [cx(ctx) + k, null]));
   return { ...upd, ...hist(ctx, "eliminar constructora", { hoja }, { detalle: `${claves.length} contrato(s)`, claves }) };
 }
 
@@ -461,23 +503,23 @@ export function planEliminarHoja(contratos, hoja, ctx) {
 export function planUnir(contratos, notas, src, dst, idx, ctx, accion = "unir") {
   const s = desdeDb(src, contratos[src]), d = desdeDb(dst, contratos[dst]);
   const todo = idx == null || s.filas.length < 2;
-  return { ...planMover(contratos, notas, src, dst, idx, ctx.nuevoId), ...hist(ctx, todo ? accion : "mover fila", s, { detalle: `${s.hoja} · ${s.contrato || "(sin número)"} → ${d.hoja} · ${d.contrato || "(sin número)"}`, destino: dst }) };
+  return { ...planMover(contratos, notas, src, dst, idx, ctx.nuevoId, rz(ctx)), ...hist(ctx, todo ? accion : "mover fila", s, { detalle: `${s.hoja} · ${s.contrato || "(sin número)"} → ${d.hoja} · ${d.contrato || "(sin número)"}`, destino: dst }) };
 }
 
 export function planComentario(c, m, ctx) {
-  return { [`contratosNotas/${c.key}/comentarios/${ctx.nuevoId()}`]: m, ...hist(ctx, "seguimiento", c, { detalle: `Comentario: ${m.texto.slice(0, 200)}` }) };
+  return { [`${rz(ctx)}Notas/${c.key}/comentarios/${ctx.nuevoId()}`]: m, ...hist(ctx, "seguimiento", c, { detalle: `Comentario: ${m.texto.slice(0, 200)}` }) };
 }
 export function planFecha(c, fecha, ctx) {
   const antes = c.nota?.fechaCompromiso;
-  return { [`contratosNotas/${c.key}/fechaCompromiso`]: fecha || null, ...hist(ctx, "seguimiento", c, { detalle: `Fecha de compromiso: ${antes || "—"} → ${fecha || "—"}` }) };
+  return { [`${rz(ctx)}Notas/${c.key}/fechaCompromiso`]: fecha || null, ...hist(ctx, "seguimiento", c, { detalle: `Fecha de compromiso: ${antes || "—"} → ${fecha || "—"}` }) };
 }
 export function planIgnorarSug(c, ctx) {
-  return { [`contratosNotas/${c.key}/ignorarSugerencia`]: true, ...hist(ctx, "seguimiento", c, { detalle: "Sugerencia ignorada" }) };
+  return { [`${rz(ctx)}Notas/${c.key}/ignorarSugerencia`]: true, ...hist(ctx, "seguimiento", c, { detalle: "Sugerencia ignorada" }) };
 }
 
 // Carga de Excel: crea/reemplaza SOLO los contratos recibidos (orden ya resuelto) y _meta. Un único registro con las claves.
 export function planCarga(contratos, meta, ctx) {
-  const upd = { "contratosExcel/_meta": meta };
-  for (const c of contratos) upd[CX + c.key] = { hoja: c.hoja, contrato: c.contrato, orden: c.orden, actualizadoAt: meta.at, actualizadoPor: meta.autor, archivo: meta.archivo, filas: c.filas };
+  const upd = { [`${rz(ctx)}Excel/_meta`]: meta };
+  for (const c of contratos) upd[cx(ctx) + c.key] = { hoja: c.hoja, contrato: c.contrato, orden: c.orden, actualizadoAt: meta.at, actualizadoPor: meta.autor, archivo: meta.archivo, filas: c.filas };
   return { ...upd, ...hist({ ...ctx, at: meta.at }, "subir excel", {}, { detalle: `${meta.archivo}: ${meta.nuevos} nuevos, ${meta.actualizados} actualizados`, archivo: meta.archivo, nuevos: meta.nuevos, actualizados: meta.actualizados, claves: contratos.map((c) => c.key) }) };
 }

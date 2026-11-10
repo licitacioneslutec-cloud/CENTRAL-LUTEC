@@ -104,6 +104,6 @@ export function parseExcel(arrayBuffer) {
 
 // Exporta contratos (armados: .hoja, .orden, .filas, vigentes) a un .xlsx con el formato del Cuadro (re-importable).
 // opts: { formato: "hoja"|"unica", contenido: "completo"|"general" } (ver construirLibro).
-export function exportContratosExcel(contratos, opts) {
-  XLSX.writeFile(construirLibro(contratos, opts), `Contratos_LUTEC_${new Date().toISOString().slice(0, 10)}.xlsx`);
+export function exportContratosExcel(contratos, opts, cfg) {
+  XLSX.writeFile(construirLibro(contratos, opts, cfg), `${cfg?.archivo || "Contratos_LUTEC"}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

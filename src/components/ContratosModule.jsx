@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C } from "../constants";
 import { isFirebaseConfigured, initFirebase } from "../firebase";
-import { subscribeContratos, subscribePermisos, subscribeHistorial, aplicarCambios, nuevoId, copiarProdAPrueba, MODO_PRUEBA } from "../contratosFirebase";
+import { subscribeContratos, subscribeSeguimiento, subscribePermisos, subscribeHistorial, aplicarCambios, nuevoId, copiarProdAPrueba, MODO_PRUEBA } from "../contratosFirebase";
 import { fmt, exportContratosExcel } from "../utils";
-import { CAMPOS, ESTADOS, MODIFICA, norm, leerCuadro, ubicarHojas, hojasConocidas, agruparContratos, aplicarAlias, desdeDb, esBase, esOtrosi, esFinalizado, diasEntre, contratoKey, siguienteOrden, filaNueva, sugerencias, permisosContratos, planEditarCampo, planCrearContrato, planAgregarFila, planEliminarContrato, planEliminarFila, planEliminarHoja, planUnir, planComentario, planFecha, planIgnorarSug, planCarga } from "../contratosExcel";
+import { CONTRATOS, valorCalc, ESTADOS, MODIFICA, norm, canon, leerCuadro, ubicarHojas, hojasConocidas, agruparContratos, aplicarAlias, desdeDb, esBase, esOtrosi, esFinalizado, contratoKey, siguienteOrden, filaNueva, sugerencias, permisosContratos, planEditarCampo, planCrearContrato, planAgregarFila, planEliminarContrato, planEliminarFila, planEliminarHoja, planUnir, planComentario, planFecha, planIgnorarSug, planCarga } from "../contratosExcel";
 import SearchBar from "./SearchBar";
 import HistorialContratos from "./HistorialContratos";
+import SeguimientoContratos from "./SeguimientoContratos";
+import { estadoSeg } from "../seguimientoContratos";
 
 const MAX_MB = 20;
 
@@ -64,7 +66,7 @@ const EstadoSelect = ({ value, onChange, disabled }) => {
 };
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 };
 const dialog = { background: C.white, borderRadius: 8, padding: 20, width: "100%", maxHeight: "90vh", overflowY: "auto" };
-const coincide = (c, q) => !q || [c.contrato, c.hoja, c.base.objeto, c.base.proyecto, c.base.entidad, c.base.nit, ...(c.filas || []).map((f) => f.encargado)].some((v) => String(v || "").toLowerCase().includes(q));
+const coincide = (c, q) => !q || [c.contrato, c.hoja, c.base.contratista, c.base.objeto, c.base.proyecto, c.base.entidad, c.base.nit, ...(c.filas || []).map((f) => f.encargado)].some((v) => String(v || "").toLowerCase().includes(q));
 const etiqueta = (c) => `${c.hoja} · ${c.contrato || "(sin número)"}`;
 const fmtAt = (at) => (at ? new Date(at).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -76,7 +78,11 @@ const actionBtn = {
 const COLS = "130px minmax(140px,1fr) 160px minmax(160px,3fr) 100px 110px 95px 60px 70px 95px";
 const SUBCOLS = "130px minmax(160px,1fr) 110px 95px 95px 120px 130px";
 
-export default function ContratosModule({ user, onBack }) {
+export default function ContratosModule({ user, onBack, cfg = CONTRATOS }) {
+  const CAMPOS = cfg.campos;
+  const conSeg = cfg.raiz === "contratos"; // pestaña "Por entrar" solo en Contratos
+  const [tab, setTab] = useState("venc"); // venc | entrar
+  const [segs, setSegs] = useState({});
   const configured = isFirebaseConfigured();
   const dbRef = useRef(null);
   const fileRef = useRef(null);
@@ -108,14 +114,15 @@ export default function ContratosModule({ user, onBack }) {
   useEffect(() => {
     if (!configured) return;
     if (!dbRef.current) dbRef.current = initFirebase();
-    const u1 = subscribeContratos(dbRef.current, (d) => { setRaw(d); setLoading(false); });
+    const u1 = subscribeContratos(dbRef.current, (d) => { setRaw(d); setLoading(false); }, cfg.raiz);
     const u2 = subscribePermisos(dbRef.current, user.id, (v) => { setPermReg(v); setPermOk(true); });
     // ponytail: el historial por contrato sale de las últimas 200 entradas cargadas; con más volumen, consultar por contratoKey (índice) en RTDB.
-    const u3 = esAdmin ? subscribeHistorial(dbRef.current, 200, setHistRecent) : () => {};
-    return () => { u1(); u2(); u3(); };
-  }, [configured, user.id, esAdmin]);
+    const u3 = esAdmin ? subscribeHistorial(dbRef.current, 200, setHistRecent, cfg.raiz) : () => {};
+    const u4 = conSeg ? subscribeSeguimiento(dbRef.current, setSegs) : () => {};
+    return () => { u1(); u2(); u3(); u4(); };
+  }, [configured, user.id, esAdmin, cfg.raiz, conSeg]);
 
-  const ctx = () => ({ usuario: user.name, nuevoId: () => nuevoId(dbRef.current) });
+  const ctx = () => ({ usuario: user.name, raiz: cfg.raiz, nuevoId: () => nuevoId(dbRef.current) });
   const run = (upd) => aplicarCambios(dbRef.current, upd);
   const intenta = (fn, msg) => Promise.resolve().then(fn).then(() => msg && showToast(msg)).catch((err) => showToast("No se pudo guardar: " + (err.message || err)));
 
@@ -142,11 +149,11 @@ export default function ContratosModule({ user, onBack }) {
     contratos
       .filter((c) => filtro === "TODOS" || (filtro === "ALARMA" ? CON_ALARMA.includes(c.alarma) : c.alarma === filtro))
       .filter((c) => coincide(c, q))
-      .forEach((c) => { (g[c.hoja] ||= []).push(c); });
+      .forEach((c) => { (g[cfg.grupo(c)] ||= []).push(c); });
     return Object.entries(g)
       .map(([nombre, rows]) => ({ nombre, rows: rows.sort((a, b) => (a.dias ?? Infinity) - (b.dias ?? Infinity)) }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
-  }, [contratos, search, filtro]);
+  }, [contratos, search, filtro, cfg]);
 
   const meta = raw.excel?._meta;
   const visibles = useMemo(() => grupos.flatMap((g) => g.rows), [grupos]);
@@ -164,7 +171,7 @@ export default function ContratosModule({ user, onBack }) {
   const setSelExp = (keys, on) => setExp((e) => { const s = { ...e.sel }; keys.forEach((k) => { if (on) s[k] = true; else delete s[k]; }); return { ...e, sel: s }; });
   const nExp = exp ? contratos.filter((c) => exp.sel[c.key]).length : 0;
   const exportar = () => {
-    exportContratosExcel(contratos.filter((c) => exp.sel[c.key]), { formato: exp.formato, contenido: exp.contenido });
+    exportContratosExcel(contratos.filter((c) => exp.sel[c.key]), { formato: exp.formato, contenido: exp.contenido, smmlv: raw.excel?._smmlv }, cfg);
     setExp(null);
   };
 
@@ -203,7 +210,7 @@ export default function ContratosModule({ user, onBack }) {
   const cambiaNuevo = (hoja, vals) => {
     const prev = contratos.filter((c) => c.hoja === hoja).sort((a, b) => a.orden - b.orden)[0];
     const v = { ...vals };
-    if (prev) ["encargado", "entidad", "nit"].forEach((k) => { if (!v[k] && prev.base[k]) v[k] = String(prev.base[k]); });
+    if (prev) cfg.precarga.forEach((k) => { if (!v[k] && prev.base[k]) v[k] = String(prev.base[k]); });
     setNuevo({ hoja, vals: v });
   };
 
@@ -217,16 +224,16 @@ export default function ContratosModule({ user, onBack }) {
       if (val !== null) fila[f.key] = val;
     }
     if (!hoja || (!fila.contrato && !fila.objeto)) return showToast("Falta la hoja y el CONTRATO (u OBJETO si no hay número)");
-    if (!perm.puedeEditarHoja(hoja) || (!perm.editarTodo && !hojas.some((h) => norm(h) === norm(hoja)))) return showToast("No tienes permiso para crear contratos en esa constructora");
+    if (!perm.puedeEditarHoja(hoja) || (!perm.editarTodo && !hojas.some((h) => norm(h) === norm(hoja)))) return showToast("No tienes permiso para crear contratos en esa hoja");
     const key = contratoKey(hoja, fila);
     const existentes = raw.excel?.contratos || {};
     if (existentes[key]) return showToast(`El contrato ya existe en ${hoja}; ábrelo y agrega un otrosí`);
     setBusy(true);
     try {
       const orden = siguienteOrden(Object.values(existentes), hoja);
-      await run(planCrearContrato(key, { hoja, contrato: fila.contrato || "", orden, actualizadoAt: new Date().toISOString(), actualizadoPor: user.name, archivo: "portal", filas: [fila] }, ctx()));
+      await run({ ...planCrearContrato(key, { hoja, contrato: fila.contrato || "", orden, actualizadoAt: new Date().toISOString(), actualizadoPor: user.name, archivo: "portal", filas: [fila] }, ctx()), ...(nuevo.seg ? { [`contratosSeguimiento/${nuevo.seg}/pasadoA`]: key } : {}) });
       setNuevo(null);
-      setFiltro("TODOS"); setSearch(""); setCollapsed((s) => ({ ...s, [hoja]: false }));
+      setTab("venc"); setFiltro("TODOS"); setSearch(""); setCollapsed((s) => ({ ...s, [cfg.grupo({ hoja, base: fila })]: false }));
       setOpen(key); setRowSel(null);
       showToast("Contrato creado");
     } catch (err) {
@@ -244,6 +251,36 @@ export default function ContratosModule({ user, onBack }) {
     } catch (err) {
       showToast("No se pudo agregar: " + (err.message || err));
     }
+  };
+
+  // Por entrar → Contratos. INICIAL: abre "Nuevo contrato" prellenado (al crearlo marca pasadoA en el mismo update).
+  // OTROSÍ: si el contrato existe (por número canónico) agrega la fila; si no, abre "Nuevo contrato".
+  const nSegAlarma = useMemo(() => Object.values(segs).filter((x) => ["A15", "A30"].includes(estadoSeg(x).alarma)).length, [segs]);
+  const pasarAContratos = (sg) => {
+    const marca = (key) => ({ [`contratosSeguimiento/${sg.key}/pasadoA`]: key });
+    const id = canon(sg.contrato);
+    const existen = id ? contratos.filter((c) => canon(c.contrato) === id) : [];
+    const inicial = !sg.tipo || /INICIAL/.test(norm(sg.tipo));
+    if (existen.length > 1) return showToast(`El contrato ${sg.contrato} existe en varias constructoras (${existen.map((c) => c.hoja).join(", ")}); agréguelo a mano y elimine el seguimiento.`);
+    const c = existen[0];
+    if (c && !perm.puedeEditarHoja(c.hoja)) return showToast(`No tienes permiso para editar ${c.hoja}`);
+    if (c && inicial) {
+      if (window.confirm(`${etiqueta(c)} ya existe en Contratos. ¿Marcar este seguimiento como pasado?`)) intenta(() => run(marca(c.key)), "Marcado como pasado a Contratos");
+      return;
+    }
+    if (c) {
+      if (!window.confirm(`¿Agregar ${sg.tipo} al contrato ${etiqueta(c)}?`)) return;
+      const rawF = raw.excel?.contratos?.[c.key]?.filas;
+      const idx = Array.isArray(rawF) ? rawF.length : Math.max(-1, ...Object.keys(rawF || {}).map(Number)) + 1;
+      const fila = { ...filaNueva(c.base, c.filas, false), tipo: sg.tipo };
+      intenta(() => run({ ...planAgregarFila(c, idx, fila, ctx()), ...marca(c.key) }), `${sg.tipo} agregado a ${etiqueta(c)}`)
+        .then(() => { setTab("venc"); setFiltro("TODOS"); setOpen(c.key); setRowSel(c.filas.length); });
+      return;
+    }
+    if (!inicial) showToast(`No se encontró ${sg.contrato || "el contrato"} en Contratos: créelo como contrato nuevo.`);
+    const cli = norm(sg.cliente);
+    const hoja = hojas.find((h) => norm(h) === cli) || hojas.find((h) => cli && (norm(h).startsWith(cli) || cli.startsWith(norm(h)))) || sg.cliente || "";
+    setNuevo({ hoja, seg: sg.key, vals: { contrato: sg.contrato || "", proyecto: sg.proyecto || "", entidad: sg.cliente || "", estado: "EN EJECUCIÓN" } });
   };
 
   const comentar = (c) => {
@@ -275,9 +312,9 @@ export default function ContratosModule({ user, onBack }) {
   };
 
   const copiarPrueba = async () => {
-    if (!window.confirm("Se reemplazarán los datos de prueba (pruebas/contratosExcel y pruebas/contratosAlias) con una copia de producción. Producción solo se lee. ¿Continuar?")) return;
+    if (!window.confirm(`Se reemplazarán los datos de prueba de ${cfg.etiqueta} (pruebas/${cfg.raiz}…) con una copia de producción. Producción solo se lee. ¿Continuar?`)) return;
     setBusy(true);
-    await intenta(() => copiarProdAPrueba(dbRef.current), "Datos de producción copiados a prueba");
+    await intenta(() => copiarProdAPrueba(dbRef.current, cfg.raiz), "Datos de producción copiados a prueba");
     setBusy(false);
   };
 
@@ -295,12 +332,12 @@ export default function ContratosModule({ user, onBack }) {
     }
     setBusy(true);
     try {
-      const { filas: leidas, avisos, sinHoja } = leerCuadro(await file.arrayBuffer());
+      const { filas: leidas, avisos, sinHoja, smmlv } = leerCuadro(await file.arrayBuffer(), cfg);
       const existentes = raw.excel?.contratos || {};
       const lista = Object.entries(existentes).map(([key, c]) => ({ key, hoja: c.hoja, contrato: c.contrato }));
       // Hojas del archivo sin columna HOJA que no son una constructora conocida (p. ej. "Contratos" tras borrar HOJA en Excel).
       const conocidas = hojasConocidas(lista);
-      const raras = sinHoja.filter((h) => !conocidas.has(norm(h)));
+      const raras = cfg.porHoja ? sinHoja.filter((h) => !conocidas.has(norm(h))) : []; // Experiencia: las hojas del archivo (GENERAL / OT) son las hojas
       const u = ubicarHojas(leidas, lista);
       const sinResolver = u.filas.filter((f) => f._sinHoja).length;
       const armar = (filas) => {
@@ -309,10 +346,10 @@ export default function ContratosModule({ user, onBack }) {
         const hojasExist = new Set(Object.values(existentes).map((c) => norm(c.hoja)));
         const porHoja = {};
         cs.forEach((c) => { if (!hojasExist.has(norm(c.hoja))) porHoja[c.hoja] = (porHoja[c.hoja] || 0) + 1; });
-        const masivas = Object.entries(porHoja).filter(([, n]) => n > 50);
+        const masivas = cfg.porHoja ? Object.entries(porHoja).filter(([, n]) => n > 50) : [];
         return {
           filas: filas.length, unidos, noTocan: Object.keys(existentes).length - act, masivas,
-          carga: cs.length ? { cs, archivo: file.name, nuevos: cs.length - act, actualizados: act, existentes } : null,
+          carga: cs.length ? { cs, smmlv, archivo: file.name, nuevos: cs.length - act, actualizados: act, existentes } : null,
         };
       };
       const solo = armar(u.filas.filter((f) => !f._sinHoja)), todo = armar(u.filas);
@@ -328,13 +365,13 @@ export default function ContratosModule({ user, onBack }) {
 
   const cargaSel = modal && modal.solo ? (modal.sinHoja ? modal[modal.modo] : modal.todo) : null;
   const confirmarCarga = async () => {
-    const { cs, archivo, nuevos, actualizados, existentes } = cargaSel.carga;
+    const { cs, smmlv, archivo, nuevos, actualizados, existentes } = cargaSel.carga;
     setModal(null);
     setBusy(true);
     try {
       // Un contrato que ya existe conserva su `orden` (el archivo puede ser un export parcial).
       const lista = cs.map((c) => ({ ...c, orden: existentes[c.key]?.orden ?? c.orden }));
-      await run(planCarga(lista, { at: new Date().toISOString(), autor: user.name, archivo, nuevos, actualizados }, ctx()));
+      await run({ ...planCarga(lista, { at: new Date().toISOString(), autor: user.name, archivo, nuevos, actualizados }, ctx()), ...(smmlv ? { [`${cfg.raiz}Excel/_smmlv`]: smmlv } : {}) });
       showToast(`Carga lista: ${nuevos} nuevos, ${actualizados} actualizados`);
     } catch (err) {
       showToast("No se pudo guardar: " + (err.message || err));
@@ -355,13 +392,7 @@ export default function ContratosModule({ user, onBack }) {
     </span>
   );
 
-  const calc = (f, fila, dias) => {
-    const p = diasEntre(fila.fechaInicio, fila.fechaFin);
-    if (p === null) return "—";
-    if (f.key === "dias") return p;
-    if (f.key === "meses") return (p / 30).toFixed(1);
-    return diasPara(fila.fechaFin) ?? dias ?? "—";
-  };
+  const xCalc = { hoy: Math.floor(Date.now() / 86400000) + 25569, smmlv: raw.excel?._smmlv || {} };
 
   const renderForm = (c, idx) => {
     const fila = c.filas[idx];
@@ -371,7 +402,7 @@ export default function ContratosModule({ user, onBack }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10, margin: "8px 0 12px", padding: 10, background: C.white, border: `1px solid ${C.g200}`, borderRadius: 4 }}>
         {CAMPOS.map((f) => {
           if (f.tipo === "calc") {
-            return <div key={f.key}><div style={labelStyle}>{f.h} (calculado)</div><div style={{ padding: "5px 0", color: C.g900 }}>{calc(f, fila)}</div></div>;
+            return <div key={f.key}><div style={labelStyle}>{f.h} (calculado)</div><div style={{ padding: "5px 0", color: C.g900 }}>{valorCalc(f, fila, xCalc)}</div></div>;
           }
           const v = fila[f.key];
           return (
@@ -410,10 +441,21 @@ export default function ContratosModule({ user, onBack }) {
       </header>
 
       <div style={{ padding: "20px clamp(16px, 2vw, 24px)" }}>
+        {conSeg && (
+          <div style={{ display: "flex", gap: 4, marginBottom: 14, borderBottom: `2px solid ${C.g200}` }}>
+            {[["venc", "Vencimientos"], ["entrar", `Por entrar${nSegAlarma ? ` (${nSegAlarma} con alarma)` : ""}`]].map(([k, l]) => (
+              <button key={k} onClick={() => setTab(k)} style={{ background: "none", border: "none", borderBottom: `3px solid ${tab === k ? C.accent : "transparent"}`, marginBottom: -2, padding: "8px 14px", fontSize: 13, fontWeight: tab === k ? 700 : 500, color: tab === k ? C.navy : C.g500, cursor: "pointer" }}>{l}</button>
+            ))}
+          </div>
+        )}
+        {tab === "entrar" ? (
+          <SeguimientoContratos segs={segs} run={run} ctx={ctx} showToast={showToast} onPasar={pasarAContratos}
+            puedeEditar={perm.editarTodo || !perm.soloLectura} puedeEliminar={perm.puedeEliminar} puedeSubir={perm.editarTodo} />
+        ) : (<>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
           <div>
-            <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase" }}>Contratos</div>
-            <h1 style={{ fontSize: 18, fontWeight: 700, color: C.navy, margin: "2px 0 0" }}>Vencimientos de Contratos</h1>
+            <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase" }}>{cfg.etiqueta}</div>
+            <h1 style={{ fontSize: 18, fontWeight: 700, color: C.navy, margin: "2px 0 0" }}>{cfg.titulo}</h1>
             <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>
               Última carga: {meta ? `${fmtAt(meta.at)} · ${meta.autor || "—"} · ${meta.archivo || "—"}` : "—"}
             </div>
@@ -454,7 +496,7 @@ export default function ContratosModule({ user, onBack }) {
           <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}><div className="spinner" />Cargando contratos…</div>
         ) : grupos.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 12 }}>
-            {contratos.length ? "No hay contratos para este filtro." : "Aún no hay contratos: use \"Subir Excel\" con el Cuadro de Experiencia."}
+            {contratos.length ? "No hay contratos para este filtro." : cfg.vacio}
           </div>
         ) : (
           grupos.map((g) => {
@@ -467,10 +509,10 @@ export default function ContratosModule({ user, onBack }) {
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", background: C.g100 }}>
                   <span style={{ fontSize: 11, color: C.g500 }}>{isCol ? "▶" : "▼"}</span>
                   <strong style={{ fontSize: 13, color: C.navy }}>{g.nombre}</strong>
-                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>{g.rows[0].base.entidad}</span>
+                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>{cfg.subtitulo(g.rows[0])}</span>
                   <span style={{ fontSize: 11, color: C.g500 }}>{g.rows.length} contratos</span>
                   <span style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" }}>
-                    {perm.puedeEliminarHoja(g.nombre) && (
+                    {cfg.porHoja && perm.puedeEliminarHoja(g.nombre) && (
                       <button onClick={(e) => { e.stopPropagation(); setDelHoja({ nombre: g.nombre, n: contratos.filter((c) => c.hoja === g.nombre).length, texto: "" }); }}
                         style={{ ...actionBtn, padding: "3px 8px", color: C.red, borderColor: C.red }}>Eliminar constructora</button>
                     )}
@@ -482,13 +524,13 @@ export default function ContratosModule({ user, onBack }) {
                 {!isCol && (
                   <div style={{ minWidth: 980 }}>
                     <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "6px 14px", fontSize: 10, fontWeight: 700, color: C.g500, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.g200}` }}>
-                      <span>Contrato</span><span>Proyecto</span><span>Encargado</span><span>Observación</span><span>Estado</span><span title="Valor vigente (último otrosí/liquidación que modifica VALOR)">Valor</span><span title="Fecha fin vigente (último otrosí/liquidación que modifica TIEMPO)">Fecha fin</span><span>Días</span><span>Otrosíes</span><span>Alarma</span>
+                      <span>Contrato</span><span>Proyecto</span><span>{cfg.cols[0][0]}</span><span>{cfg.cols[1][0]}</span><span>Estado</span><span title="Valor vigente (último otrosí/liquidación que modifica VALOR)">Valor</span><span title="Fecha fin vigente (último otrosí/liquidación que modifica TIEMPO)">Fecha fin</span><span>Días</span><span>Otrosíes</span><span>Alarma</span>
                     </div>
                     {g.rows.map((c) => {
                       const isOpen = open === c.key;
                       const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
                       const edita = perm.puedeEditarHoja(c.hoja), puedeDel = perm.puedeEliminarHoja(c.hoja);
-                      const obs = [...c.filas].reverse().map((f) => f.observaciones).find((v) => String(v || "").trim()) || "";
+                      const [c3, c4] = cfg.cols.map(([, fn]) => String(fn(c) ?? ""));
                       const sub = puedeDel ? SUBCOLS + " 32px" : SUBCOLS;
                       return (
                         <div key={c.key} style={{ borderBottom: `1px solid ${C.g100}` }}>
@@ -496,8 +538,8 @@ export default function ContratosModule({ user, onBack }) {
                             style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, padding: "8px 14px", fontSize: 12, color: C.g900, cursor: "pointer", alignItems: "center", background: isOpen ? C.blueL : "transparent", fontWeight: isOpen ? 700 : 400, borderLeft: `3px solid ${isOpen ? C.accent : "transparent"}` }}>
                             <span style={ellipsis}>{c.contrato || "—"}</span>
                             <span style={{ fontWeight: 600, ...ellipsis }} title={c.base.proyecto}>{c.base.proyecto || "—"}</span>
-                            <span style={ellipsis} title={c.base.encargado}>{c.base.encargado || "—"}</span>
-                            <span style={ellipsis} title={obs}>{obs || "—"}</span>
+                            <span style={ellipsis} title={c3}>{c3 || "—"}</span>
+                            <span style={ellipsis} title={c4}>{c4 || "—"}</span>
                             <span style={ellipsis}>{c.estadoEfectivo || "—"}</span>
                             <span>{c.valorVigente != null ? fmt(c.valorVigente) : "—"}</span>
                             <span>{c.fechaFinVigente || "—"}</span>
@@ -582,6 +624,7 @@ export default function ContratosModule({ user, onBack }) {
             );
           })
         )}
+        </>)}
       </div>
 
       {modal && (
@@ -640,10 +683,10 @@ export default function ContratosModule({ user, onBack }) {
       {nuevo && (
         <div style={overlay}>
           <div style={{ ...dialog, maxWidth: 820 }}>
-            <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>Nuevo contrato</h2>
+            <h2 style={{ fontSize: 15, color: C.navy, margin: "0 0 10px" }}>Nuevo contrato{nuevo.seg ? " (desde Por entrar)" : ""}</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
               <div>
-                <div style={labelStyle}>Hoja / constructora *</div>
+                <div style={labelStyle}>{cfg.hojaLabel} *</div>
                 <input list="hojas-contratos" value={nuevo.hoja} onChange={(e) => cambiaNuevo(e.target.value, nuevo.vals)} style={inputStyle} />
                 <datalist id="hojas-contratos">{hojasEditables.map((h) => <option key={h} value={h} />)}</datalist>
               </div>
@@ -672,7 +715,7 @@ export default function ContratosModule({ user, onBack }) {
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
               <label style={{ fontSize: 12 }}><div style={labelStyle}>Formato</div>
                 <select value={exp.formato} onChange={(e) => setExp({ ...exp, formato: e.target.value })} style={{ ...inputStyle, width: "auto" }}>
-                  <option value="hoja">Una hoja por constructora</option><option value="unica">Una sola hoja</option>
+                  <option value="hoja">{cfg.porHoja ? "Una hoja por constructora" : "Una hoja por hoja del archivo (GENERAL / ORDEN DE TRABAJO)"}</option><option value="unica">Una sola hoja</option>
                 </select></label>
               <label style={{ fontSize: 12 }}><div style={labelStyle}>Contenido</div>
                 <select value={exp.contenido} onChange={(e) => setExp({ ...exp, contenido: e.target.value })} style={{ ...inputStyle, width: "auto" }}>
@@ -785,7 +828,7 @@ export default function ContratosModule({ user, onBack }) {
         </div>
       )}
 
-      {histOpen && esAdmin && <HistorialContratos db={dbRef.current} recent={histRecent} onClose={() => setHistOpen(false)} />}
+      {histOpen && esAdmin && <HistorialContratos db={dbRef.current} recent={histRecent} raiz={cfg.raiz} onClose={() => setHistOpen(false)} />}
 
       {toast && (
         <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.navy, color: C.white, fontSize: 12, fontWeight: 600, padding: "10px 20px", borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,.2)", zIndex: 1200 }}>

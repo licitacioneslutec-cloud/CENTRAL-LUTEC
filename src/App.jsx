@@ -3,6 +3,7 @@ import Portal from "./components/Portal";
 import FacturasModule from "./components/FacturasModule";
 import DocumentosModule from "./components/DocumentosModule";
 import ContratosModule from "./components/ContratosModule";
+import { EXPERIENCIA } from "./experienciaExcel";
 import CarteraModule from "./components/CarteraModule";
 import ConciliacionProveedores from "./components/ConciliacionProveedores";
 import CruceComprasWO from "./components/CruceComprasWO";
@@ -81,6 +82,8 @@ export default function App() {
   } else if (view === "contratos") {
     const effectiveRole = role || (user.role === "admin" ? "contabilidad" : user.role);
     content = <ContratosModule user={user} role={effectiveRole} onBack={() => setView("portal")} />;
+  } else if (view === "experiencia") {
+    content = <ContratosModule user={user} cfg={EXPERIENCIA} onBack={() => setView("portal")} />;
   } else if (view === "cartera") {
     content = <CarteraModule user={user} onBack={() => setView("portal")} />;
   } else if (view === "cxp") {

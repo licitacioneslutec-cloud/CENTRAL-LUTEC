@@ -14,7 +14,8 @@ export const DEPARTMENTS = [
     id: "contabilidad", name: "Contabilidad", icon: "📊", desc: "Radicación de facturas y lectura de órdenes de compra DIAN",
     modules: [
       { id: "facturas", name: "Aclaración Facturas", desc: "Radicación de facturas con novedades y no radicadas", type: "internal", status: "activo", role: "contabilidad" },
-      { id: "contratos", name: "Contratos", desc: "Cuadro de experiencia: vencimientos, seguimiento y exportación", type: "internal", status: "activo", roles: ["contabilidad", "ingenieria"], view: "contratos" },
+      { id: "contratos", name: "Contratos", desc: "Cuadro de experiencia: vencimientos, contratos por entrar y exportación", type: "internal", status: "activo", roles: ["contabilidad", "ingenieria"], view: "contratos" },
+      { id: "experiencia", name: "Experiencia Contratistas", desc: "Contratos y órdenes de trabajo de contratistas: vencimientos y exportación", type: "internal", status: "activo", roles: ["contabilidad", "ingenieria"], view: "experiencia" },
       { id: "cartera", name: "Cartera", desc: "Cortes de World Office: cambios y presentación", type: "internal", status: "activo", role: "contabilidad", view: "cartera" },
       { id: "cxp", name: "Conciliación Proveedores", desc: "Cartera de Lutec vs estado de cuenta del proveedor", type: "internal", status: "activo", role: "contabilidad", view: "cxp" },
       { id: "cruce-wo", name: "Cruce Compras WO", desc: "Facturas del portal vs Compras por Documento de World Office", type: "internal", status: "activo", role: "contabilidad", view: "cruce-wo" },
